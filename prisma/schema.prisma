@@ -1,0 +1,141 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  USER
+  ADMIN
+}
+
+enum AppStatus {
+  DRAFT
+  BUILDING
+  SUCCESS
+  FAILED
+}
+
+model User {
+  id            String      @id @default(cuid())
+  fullName      String
+  email         String      @unique
+  password      String
+  role          UserRole    @default(USER)
+  isVerified    Boolean     @default(false)
+  avatar        String?
+  createdAt     DateTime    @default(now())
+  updatedAt     DateTime    @updatedAt
+
+  apps          App[]
+  orders        Order[]
+}
+
+model App {
+  id               String      @id @default(cuid())
+  userId           String
+
+  appName          String
+  packageName      String      @unique
+  websiteUrl       String
+
+  icon             String?
+  splashScreen     String?
+
+  themeColor       String?
+  versionName      String      @default("1.0.0")
+  versionCode      Int         @default(1)
+
+  status           AppStatus   @default(DRAFT)
+
+  apkUrl           String?
+  aabUrl           String?
+
+  createdAt        DateTime    @default(now())
+  updatedAt        DateTime    @updatedAt
+
+  user             User        @relation(fields: [userId], references: [id])
+
+  builds           Build[]
+}
+
+model Build {
+
+  id              String      @id @default(cuid())
+
+  appId           String
+
+  status          AppStatus
+
+  buildLog        String?
+
+  apkSize         String?
+
+  createdAt       DateTime    @default(now())
+
+  app             App @relation(fields: [appId], references: [id])
+
+}
+
+model Plan {
+
+  id              String @id @default(cuid())
+
+  name            String
+
+  price           Float
+
+  maxApps         Int
+
+  buildsPerMonth  Int
+
+  createdAt       DateTime @default(now())
+
+}
+
+model Order {
+
+  id              String @id @default(cuid())
+
+  userId          String
+
+  amount          Float
+
+  paymentMethod   String
+
+  paymentStatus   String
+
+  createdAt       DateTime @default(now())
+
+  user            User @relation(fields: [userId], references: [id])
+
+}
+
+model ApiKey {
+
+  id              String @id @default(cuid())
+
+  name            String
+
+  apiKey          String @unique
+
+  active          Boolean @default(true)
+
+  createdAt       DateTime @default(now())
+
+}
+
+model Notification {
+
+  id              String @id @default(cuid())
+
+  title           String
+
+  message         String
+
+  createdAt       DateTime @default(now())
+
+}

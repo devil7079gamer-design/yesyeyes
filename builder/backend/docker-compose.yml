@@ -1,0 +1,52 @@
+services:
+
+
+  api:
+
+    build: .
+
+    container_name: website_builder_api
+
+    ports:
+
+      - "8000:8000"
+
+    env_file:
+
+      - .env
+
+    depends_on:
+
+      - redis
+
+
+
+  worker:
+
+    build: .
+
+    container_name: website_builder_worker
+
+    command:
+
+      celery -A workers.build_queue.celery worker --loglevel=info
+
+    env_file:
+
+      - .env
+
+    depends_on:
+
+      - redis
+
+
+
+  redis:
+
+    image: redis:7-alpine
+
+    container_name: website_builder_redis
+
+    ports:
+
+      - "6379:6379"
