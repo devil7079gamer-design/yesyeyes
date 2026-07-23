@@ -1,19 +1,27 @@
-<provider
+<?xml version="1.0" encoding="utf-8"?>
 
-    android:name="androidx.core.content.FileProvider"
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
-    android:authorities="${applicationId}.provider"
+    <application
+        android:theme="@style/AppTheme"
+        android:label="YesyEyes"
+        android:allowBackup="true"
+        android:supportsRtl="true">
 
-    android:exported="false"
+        <activity
+            android:name=".MainActivity"
+            android:exported="true">
 
-    android:grantUriPermissions="true">
+            <intent-filter>
 
+                <action android:name="android.intent.action.MAIN" />
 
-    <meta-data
+                <category android:name="android.intent.category.LAUNCHER" />
 
-        android:name="android.support.FILE_PROVIDER_PATHS"
+            </intent-filter>
 
-        android:resource="@xml/file_paths" />
+        </activity>
 
+    </application>
 
-</provider>
+</manifest>
