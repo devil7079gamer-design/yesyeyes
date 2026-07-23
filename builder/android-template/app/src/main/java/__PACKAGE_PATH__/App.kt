@@ -8,8 +8,6 @@ class App : Application() {
 
         super.onCreate()
 
-        MultiDex.install(this)
-
     }
 
 }
