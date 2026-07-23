@@ -1,5 +1,3 @@
-package __PACKAGE_NAME__
-
 import android.app.Application
 
 
@@ -9,17 +7,6 @@ class MainInitializer : Application() {
     override fun onCreate() {
 
         super.onCreate()
-
-
-        // Initialize analytics
-
-        if (ReleaseConfig.ENABLE_ANALYTICS) {
-
-            AppAnalytics(
-                this
-            ).logOpenApp()
-
-        }
 
 
         // Initialize notifications
@@ -37,8 +24,6 @@ class MainInitializer : Application() {
 
         }
 
-
     }
-
 
 }
