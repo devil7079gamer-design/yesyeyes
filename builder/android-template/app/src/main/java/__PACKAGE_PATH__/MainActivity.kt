@@ -1,6 +1,7 @@
 package __PACKAGE_NAME__
 
 import android.os.Bundle
+import com.yesyeyes.app.R
 import androidx.appcompat.app.AppCompatActivity
 import android.webkit.WebView
 import android.widget.Toast
