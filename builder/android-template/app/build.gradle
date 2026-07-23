@@ -11,22 +11,22 @@ plugins {
 
 android {
 
-    namespace "__PACKAGE_NAME__"
+    namespace "com.yesyeyes.app"
 
     compileSdk 35
 
 
     defaultConfig {
 
-        applicationId "__PACKAGE_NAME__"
+        applicationId "com.yesyeyes.app"
 
         minSdk 24
 
         targetSdk 35
 
-        versionCode __VERSION_CODE__
+        versionCode 1
 
-        versionName "__VERSION_NAME__"
+        versionName "1.0"
 
     }
 
@@ -63,7 +63,6 @@ android {
         jvmTarget = "17"
 
     }
-
 
 }
 
@@ -105,6 +104,5 @@ dependencies {
     implementation(
         "com.google.android.gms:play-services-ads:23.6.0"
     )
-
 
 }
