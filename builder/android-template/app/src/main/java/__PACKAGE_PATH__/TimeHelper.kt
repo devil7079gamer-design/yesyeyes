@@ -1,4 +1,4 @@
-package __PACKAGE_NAME__
+package com.yesyeyes.app
 
 import java.text.SimpleDateFormat
 import java.util.Date
