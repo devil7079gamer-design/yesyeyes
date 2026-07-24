@@ -1,45 +1,47 @@
 name: Android Build
 
 on:
+  push:
+    branches:
+      - main
+      - master
+
   workflow_dispatch:
 
 jobs:
   build:
+
     runs-on: ubuntu-latest
 
-    defaults:
-      run:
-        working-directory: builder/android-template
-
     steps:
-      - name: Checkout Repository
+
+      - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Set up Java 17
+      - name: Setup Java
         uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: "17"
-          cache: gradle
 
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
 
-      - name: Make Gradle Executable
-        run: chmod +x gradlew
+      - name: Flutter Version
+        run: flutter --version
 
-      - name: Clean Project
-        run: ./gradlew clean
+      - name: Get Packages
+        run: flutter pub get
+        working-directory: android
 
-      - name: Build Debug APK
-        run: ./gradlew assembleDebug --stacktrace
-
-      - name: Show APK Files
-        run: find . -name "*.apk"
+      - name: Build APK
+        run: flutter build apk --release
+        working-directory: android
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
-          name: app-debug
-          path: |
-            **/*.apk
+          name: WebsiteBuilder-APK
+          path: android/build/app/outputs/flutter-apk/app-release.apk
