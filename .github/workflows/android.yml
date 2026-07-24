@@ -1,25 +1,47 @@
-name: app_template
-description: A new Flutter Android Template project.
-publish_to: 'none'
+name: Android Build
 
-version: 1.0.0+1
+on:
+  push:
+    branches:
+      - main
+      - master
 
-environment:
-  sdk: '>=3.0.0 <4.0.0'
+  workflow_dispatch:
 
-dependencies:
-  flutter:
-    sdk: flutter
-  cupertino_icons: ^1.0.8
+jobs:
+  build:
 
-dev_dependencies:
-  flutter_test:
-    sdk: flutter
-  flutter_lints: ^3.0.0
+    runs-on: ubuntu-latest
 
-flutter:
-  uses-material-design: true
+    steps:
 
-  # اگر آپ امیجز یا دیگر فائلز شامل کرنا چاہتے ہیں:
-  # assets:
-  #   - assets/images/
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Setup Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Flutter Version
+        run: flutter --version
+
+      - name: Get Packages
+        run: flutter pub get
+        working-directory: android
+
+      - name: Build APK
+        run: flutter build apk --release
+        working-directory: android
+
+      - name: Upload APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: WebsiteBuilder-APK
+          path: android/build/app/outputs/flutter-apk/app-release.apk
