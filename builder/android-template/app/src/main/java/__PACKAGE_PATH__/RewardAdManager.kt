@@ -1,4 +1,4 @@
-package __PACKAGE_NAME__
+package com.yesyeyes.app
 
 import android.app.Activity
 import com.google.android.gms.ads.AdRequest
