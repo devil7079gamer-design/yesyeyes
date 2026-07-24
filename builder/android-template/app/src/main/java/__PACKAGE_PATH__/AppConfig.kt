@@ -1,10 +1,10 @@
-package __PACKAGE_NAME__
+package com.yesyeyes.app
 
 object AppConfig {
 
-    const val WEBSITE_URL = "__WEBSITE_URL__"
+    const val WEBSITE_URL = "https://google.com"
 
-    const val APP_NAME = "__APP_NAME__"
+    const val APP_NAME = "YesyEyes"
 
     const val VERSION_NAME = "1.0.0"
 
