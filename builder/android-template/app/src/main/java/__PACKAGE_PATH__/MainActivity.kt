@@ -1,4 +1,4 @@
-package __PACKAGE_NAME__
+package com.yesyeyes.app
 
 import android.os.Bundle
 import com.yesyeyes.app.R
