@@ -1,122 +1,45 @@
 package com.yesyeyes.app
 
 import android.os.Bundle
-import com.yesyeyes.app.R
-import androidx.appcompat.app.AppCompatActivity
 import android.webkit.WebView
 import android.widget.Toast
-
+import androidx.appcompat.app.AppCompatActivity
 
 class MainActivity : AppCompatActivity() {
 
-
     private lateinit var webView: WebView
 
-
-    override fun onCreate(
-        savedInstanceState: Bundle?
-    ) {
-
+    override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        setContentView(R.layout.activity_main)
 
-        setContentView(
-            R.layout.activity_main
-        )
+        webView = findViewById(R.id.webView)
 
-
-        webView =
-            findViewById(
-                R.id.webView
-            )
-
-
-        // Setup WebView
-
-        WebSettingsManager.configure(
-            webView
-        )
-
-
-        webView.webViewClient =
-            WebViewClientManager()
-
-
-        webView.addJavascriptInterface(
-
-            WebBridge(
-                this
-            ),
-
-            "Android"
-
-        )
-
+        // Configure WebView
+        WebSettingsManager.configure(webView)
+        webView.webViewClient = WebViewClientManager()
+        webView.addJavascriptInterface(WebBridge(this), "Android")
 
         // Load Website
+        webView.loadUrl(AppConfig.WEBSITE_URL)
 
-        webView.loadUrl(
-
-            AppConfig.WEBSITE_URL
-
-        )
-
-
-        // Load Ads
-
-        if (
-
-            ReleaseConfig.ENABLE_ADS
-
-        ) {
-
-
-            AdManager.loadAd(
-
-                this
-
-            )
-
-
+        // Load Ads (only if enabled)
+        if (ReleaseConfig.ENABLE_ADS) {
+            try {
+                AdManager.loadAd(this)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
-
-
     }
 
-
-
+    @Deprecated("Deprecated in Java")
     override fun onBackPressed() {
-
-
-        if (
-
-            webView.canGoBack()
-
-        ) {
-
-
+        if (webView.canGoBack()) {
             webView.goBack()
-
-
+        } else {
+            Toast.makeText(this, "Press back again to exit", Toast.LENGTH_SHORT).show()
+            super.onBackPressed()
         }
-
-        else {
-
-
-            Toast.makeText(
-
-                this,
-
-                "Press back again to exit",
-
-                Toast.LENGTH_SHORT
-
-            ).show()
-
-
-        }
-
-
     }
-
-
 }
