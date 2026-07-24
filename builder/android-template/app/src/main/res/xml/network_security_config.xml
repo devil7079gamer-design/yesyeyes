@@ -5,7 +5,7 @@
     <domain-config cleartextTrafficPermitted="true">
 
         <domain includeSubdomains="true">
-            __DOMAIN__
+         123.123.123.123
         </domain>
 
     </domain-config>
