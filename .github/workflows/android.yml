@@ -34,14 +34,12 @@ jobs:
 
       - name: Get Packages
         run: flutter pub get
-        working-directory: android
 
       - name: Build APK
         run: flutter build apk --release
-        working-directory: android
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: WebsiteBuilder-APK
-          path: android/build/app/outputs/flutter-apk/app-release.apk
+          path: build/app/outputs/flutter-apk/app-release.apk
