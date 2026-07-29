@@ -86,6 +86,9 @@ jobs:
 
       - name: Build Windows Release Executable
         working-directory: builder/android_template
+        env:
+          CXXFLAGS: "/D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS"
+          CFLAGS: "/D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS"
         run: |
           flutter build windows --release --dart-define=WEB_URL="${{ github.event.client_payload.web_url }}" --dart-define=APP_NAME="${{ github.event.client_payload.app_name }}"
 
@@ -98,7 +101,6 @@ jobs:
           
           $buildDir = "builder/android_template/build/windows/x64/runner/Release"
           
-          # Auto-detect built .exe and rename it to Custom App Name
           $exeFile = Get-ChildItem -Path $buildDir -Filter "*.exe" | Select-Object -First 1
           if ($exeFile) {
               Rename-Item -Path $exeFile.FullName -NewName "$safeName.exe"
