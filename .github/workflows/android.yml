@@ -8,7 +8,7 @@ on:
 
   workflow_dispatch:
 
-  # 🚀 Website/Server Trigger Event
+  # 🚀 Dynamic Trigger from Website / Server
   repository_dispatch:
     types: [build-app]
 
@@ -39,26 +39,30 @@ jobs:
         working-directory: builder/android_template
         run: flutter pub get
 
+      - name: Generate Custom Icons (If Icon Exists)
+        working-directory: builder/android_template
+        run: |
+          if [ -f "assets/icon.png" ]; then
+            flutter pub run flutter_launcher_icons
+          fi
+
       - name: Build Android Release APK
         working-directory: builder/android_template
-        run: flutter build apk --release
-
-      - name: Prepare APK File
         run: |
-          cp builder/android_template/build/app/outputs/flutter-apk/app-release.apk ./app-release.apk
+          flutter build apk --release --dart-define=WEB_URL="${{ github.event.client_payload.web_url }}" --dart-define=APP_NAME="${{ github.event.client_payload.app_name }}"
 
-      - name: Upload Artifact to GitHub
-        uses: actions/upload-artifact@v4
-        with:
-          name: android-apk
-          path: app-release.apk
-
-      - name: Send APK Direct To Server
+      - name: Prepare APK File & Send To Server
         run: |
-          echo "Sending app-release.apk to Pterodactyl server..."
+          RAW_NAME="${{ github.event.client_payload.app_name || 'app' }}"
+          SAFE_NAME=$(echo "$RAW_NAME" | sed 's/[^a-zA-Z0-9_-]/_/g')
+          APK_NAME="${SAFE_NAME}-release.apk"
+          
+          cp builder/android_template/build/app/outputs/flutter-apk/app-release.apk "./$APK_NAME"
+          
+          echo "Sending $APK_NAME to server..."
           curl -X POST "http://104.251.123.179:1747/api/upload-build" \
-            -H "x-file-name: app-release.apk" \
-            --data-binary "@app-release.apk"
+            -H "x-file-name: $APK_NAME" \
+            --data-binary "@$APK_NAME"
 
   # =============================================================
   # JOB 2: BUILD WINDOWS EXE (PC APP)
@@ -89,23 +93,34 @@ jobs:
 
       - name: Build Windows Release Executable
         working-directory: builder/android_template
-        run: flutter build windows --release
+        run: |
+          flutter build windows --release --dart-define=WEB_URL="${{ github.event.client_payload.web_url }}" --dart-define=APP_NAME="${{ github.event.client_payload.app_name }}"
 
-      - name: Compress Executable Folder
+      - name: Rename Executable & Package Zip
         shell: powershell
         run: |
-          Compress-Archive -Path "builder/android_template/build/windows/x64/runner/Release\*" -DestinationPath "app-windows.zip"
-
-      - name: Upload Artifact to GitHub
-        uses: actions/upload-artifact@v4
-        with:
-          name: windows-app
-          path: app-windows.zip
+          $rawName = "${{ github.event.client_payload.app_name }}"
+          if ([string]::IsNullOrWhiteSpace($rawName)) { $rawName = "VexApp" }
+          $safeName = $rawName -replace '[^a-zA-Z0-9_-]', '_'
+          
+          $buildDir = "builder/android_template/build/windows/x64/runner/Release"
+          
+          # Auto-detect built .exe and rename it to Custom App Name
+          $exeFile = Get-ChildItem -Path $buildDir -Filter "*.exe" | Select-Object -First 1
+          if ($exeFile) {
+              Rename-Item -Path $exeFile.FullName -NewName "$safeName.exe"
+          }
+          
+          Compress-Archive -Path "$buildDir\*" -DestinationPath "$safeName-windows.zip"
 
       - name: Send Windows Zip Direct To Server
         shell: bash
         run: |
-          echo "Sending app-windows.zip to Pterodactyl server..."
+          RAW_NAME="${{ github.event.client_payload.app_name || 'VexApp' }}"
+          SAFE_NAME=$(echo "$RAW_NAME" | sed 's/[^a-zA-Z0-9_-]/_/g')
+          ZIP_NAME="${SAFE_NAME}-windows.zip"
+          
+          echo "Sending $ZIP_NAME to server..."
           curl -X POST "http://104.251.123.179:1747/api/upload-build" \
-            -H "x-file-name: app-windows.zip" \
-            --data-binary "@app-windows.zip"
+            -H "x-file-name: $ZIP_NAME" \
+            --data-binary "@$ZIP_NAME"
