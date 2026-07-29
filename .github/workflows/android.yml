@@ -39,13 +39,6 @@ jobs:
         working-directory: builder/android_template
         run: flutter pub get
 
-      - name: Generate Custom Icons (If Icon Exists)
-        working-directory: builder/android_template
-        run: |
-          if [ -f "assets/icon.png" ]; then
-            flutter pub run flutter_launcher_icons
-          fi
-
       - name: Build Android Release APK
         working-directory: builder/android_template
         run: |
