@@ -22,15 +22,5 @@ dev_dependencies:
   flutter_lints: ^4.0.0
   flutter_launcher_icons: ^0.13.1
 
-flutter_launcher_icons:
-  image_path: "assets/icon.png"
-  android: true
-  ios: true
-  windows:
-    generate: true
-    image_path: "assets/icon.png"
-
 flutter:
   uses-material-design: true
-  assets:
-    - assets/icon.png
