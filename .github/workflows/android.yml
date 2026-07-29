@@ -35,12 +35,6 @@ jobs:
         with:
           channel: stable
 
-      - name: Print Flutter & Project Info
-        run: |
-          flutter --version
-          echo "App Name: ${{ github.event.client_payload.app_name || 'App' }}"
-          echo "Web Link: ${{ github.event.client_payload.web_url }}"
-
       - name: Get Dependencies
         working-directory: builder/android_template
         run: flutter pub get
@@ -51,22 +45,20 @@ jobs:
 
       - name: Prepare APK File
         run: |
-          mkdir -name-temp
-          cp builder/android_template/build/app/outputs/flutter-apk/app-release.apk "./${{ github.event.client_payload.app_name || 'app' }}-release.apk"
+          cp builder/android_template/build/app/outputs/flutter-apk/app-release.apk ./app-release.apk
 
       - name: Upload Artifact to GitHub
         uses: actions/upload-artifact@v4
         with:
           name: android-apk
-          path: "*.apk"
+          path: app-release.apk
 
       - name: Send APK Direct To Server
         run: |
-          APK_FILE=$(ls *.apk | head -n 1)
-          echo "Sending $APK_FILE to Pterodactyl server..."
+          echo "Sending app-release.apk to Pterodactyl server..."
           curl -X POST "http://104.251.123.179:1747/api/upload-build" \
-            -H "x-file-name: $APK_FILE" \
-            --data-binary "@$APK_FILE"
+            -H "x-file-name: app-release.apk" \
+            --data-binary "@app-release.apk"
 
   # =============================================================
   # JOB 2: BUILD WINDOWS EXE (PC APP)
@@ -102,20 +94,18 @@ jobs:
       - name: Compress Executable Folder
         shell: powershell
         run: |
-          $appName = "${{ github.event.client_payload.app_name || 'app' }}"
-          Compress-Archive -Path "builder/android_template/build/windows/x64/runner/Release/*" -DestinationPath "$appName-windows.zip"
+          Compress-Archive -Path "builder/android_template/build/windows/x64/runner/Release\*" -DestinationPath "app-windows.zip"
 
       - name: Upload Artifact to GitHub
         uses: actions/upload-artifact@v4
         with:
           name: windows-app
-          path: "*-windows.zip"
+          path: app-windows.zip
 
       - name: Send Windows Zip Direct To Server
         shell: bash
         run: |
-          ZIP_FILE=$(ls *-windows.zip | head -n 1)
-          echo "Sending $ZIP_FILE to Pterodactyl server..."
+          echo "Sending app-windows.zip to Pterodactyl server..."
           curl -X POST "http://104.251.123.179:1747/api/upload-build" \
-            -H "x-file-name: $ZIP_FILE" \
-            --data-binary "@$ZIP_FILE"
+            -H "x-file-name: app-windows.zip" \
+            --data-binary "@app-windows.zip"
