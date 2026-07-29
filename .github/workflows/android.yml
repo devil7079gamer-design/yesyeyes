@@ -28,15 +28,15 @@ jobs:
         run: flutter --version
 
       - name: Get Packages
-        working-directory: builder/android-template
+        working-directory: builder/android_template
         run: flutter pub get
 
       - name: Build APK
-        working-directory: builder/android-template
+        working-directory: builder/android_template
         run: flutter build apk --release
 
       - name: Upload APK
         uses: actions/upload-artifact@v4
         with:
           name: app-release
-          path: builder/android-template/build/app/outputs/flutter-apk/app-release.apk
+          path: builder/android_template/build/app/outputs/flutter-apk/app-release.apk
