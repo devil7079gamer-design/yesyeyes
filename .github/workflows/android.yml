@@ -8,6 +8,10 @@ on:
 
   workflow_dispatch:
 
+  # 🚀 Server/Website Trigger
+  repository_dispatch:
+    types: [build-app]
+
 jobs:
   build:
     runs-on: ubuntu-latest
@@ -26,6 +30,11 @@ jobs:
 
       - name: Flutter Version
         run: flutter --version
+
+      - name: Inject Website Data
+        run: |
+          echo "Building App Name: ${{ github.event.client_payload.app_name }}"
+          echo "Target Web URL: ${{ github.event.client_payload.web_url }}"
 
       - name: Get Packages
         working-directory: builder/android_template
