@@ -44,13 +44,25 @@ jobs:
         run: |
           flutter build apk --release --dart-define=WEB_URL="${{ github.event.client_payload.web_url }}" --dart-define=APP_NAME="${{ github.event.client_payload.app_name }}"
 
-      - name: Prepare APK File & Send To Server
+      - name: Prepare APK File Name
         run: |
           RAW_NAME="${{ github.event.client_payload.app_name || 'app' }}"
           SAFE_NAME=$(echo "$RAW_NAME" | sed 's/[^a-zA-Z0-9_-]/_/g')
           APK_NAME="${SAFE_NAME}-release.apk"
-          
           cp builder/android_template/build/app/outputs/flutter-apk/app-release.apk "./$APK_NAME"
+
+      # 📦 STEP: Upload APK to GitHub Artifacts (Show 1 in Artifacts)
+      - name: Upload Android APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Android-APK
+          path: ./*-release.apk
+
+      - name: Send APK To Server
+        run: |
+          RAW_NAME="${{ github.event.client_payload.app_name || 'app' }}"
+          SAFE_NAME=$(echo "$RAW_NAME" | sed 's/[^a-zA-Z0-9_-]/_/g')
+          APK_NAME="${SAFE_NAME}-release.apk"
           
           echo "Sending $APK_NAME to server..."
           curl -X POST "http://104.251.123.179:1747/api/upload-build" \
@@ -107,6 +119,13 @@ jobs:
           }
           
           Compress-Archive -Path "$buildDir\*" -DestinationPath "$safeName-windows.zip"
+
+      # 📦 STEP: Upload Windows ZIP to GitHub Artifacts (Show 1 in Artifacts)
+      - name: Upload Windows Zip Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Windows-EXE-Zip
+          path: ./*-windows.zip
 
       - name: Send Windows Zip Direct To Server
         shell: bash
