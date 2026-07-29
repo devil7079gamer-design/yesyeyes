@@ -1,21 +1,19 @@
-name: Android Build
+name: Multi-Platform App Builder
 
 on:
   push:
-    branches:
-      - main
-      - master
-
+    branches: [ "main", "master" ]
   workflow_dispatch:
-
-  # 🚀 Server/Website Trigger
   repository_dispatch:
     types: [build-app]
 
 jobs:
-  build:
+  # -------------------------------------------------------------
+  # JOB 1: BUILD ANDROID APK
+  # -------------------------------------------------------------
+  build-android:
+    if: github.event.client_payload.platform == 'android' || github.event.client_payload.platform == 'both' || github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
-
     steps:
       - uses: actions/checkout@v4
 
@@ -28,24 +26,66 @@ jobs:
         with:
           channel: stable
 
-      - name: Flutter Version
-        run: flutter --version
+      - name: Get Packages
+        working-directory: builder/android_template
+        run: flutter pub get
 
-      - name: Inject Website Data
+      - name: Build Android APK
+        working-directory: builder/android_template
+        run: flutter build apk --release
+
+      - name: Rename APK File
         run: |
-          echo "Building App Name: ${{ github.event.client_payload.app_name }}"
-          echo "Target Web URL: ${{ github.event.client_payload.web_url }}"
+          mv builder/android_template/build/app/outputs/flutter-apk/app-release.apk builder/android_template/build/app/outputs/flutter-apk/${{ github.event.client_payload.app_name || 'app' }}-release.apk
+
+      - name: Upload Artifact to GitHub
+        uses: actions/upload-artifact@v4
+        with:
+          name: android-apk
+          path: builder/android_template/build/app/outputs/flutter-apk/*.apk
+
+      - name: Send APK to Server
+        run: |
+          curl -X POST "http://104.251.123.179:1747/api/upload-build" \
+            -F "file=@builder/android_template/build/app/outputs/flutter-apk/${{ github.event.client_payload.app_name || 'app' }}-release.apk"
+
+  # -------------------------------------------------------------
+  # JOB 2: BUILD WINDOWS EXE (PC APP)
+  # -------------------------------------------------------------
+  build-windows:
+    if: github.event.client_payload.platform == 'windows' || github.event.client_payload.platform == 'both'
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Enable Windows Desktop Support
+        run: flutter config --enable-windows-desktop
 
       - name: Get Packages
         working-directory: builder/android_template
         run: flutter pub get
 
-      - name: Build APK
+      - name: Build Windows Executable
         working-directory: builder/android_template
-        run: flutter build apk --release
+        run: flutter build windows --release
 
-      - name: Upload APK
+      - name: Compress Executable Folder
+        shell: powershell
+        run: |
+          Compress-Archive -Path "builder/android_template/build/windows/x64/runner/Release/*" -DestinationPath "windows-app.zip"
+
+      - name: Upload Artifact to GitHub
         uses: actions/upload-artifact@v4
         with:
-          name: app-release
-          path: builder/android_template/build/app/outputs/flutter-apk/app-release.apk
+          name: windows-exe
+          path: windows-app.zip
+
+      - name: Send Windows Zip to Server
+        shell: bash
+        run: |
+          curl -X POST "http://104.251.123.179:1747/api/upload-build" \
+            -F "file=@windows-app.zip"
