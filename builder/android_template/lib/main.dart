@@ -33,6 +33,7 @@ class MyApp extends StatelessWidget {
   Widget build(BuildContext context) {
     const String targetUrl = String.fromEnvironment('WEB_URL', defaultValue: 'https://google.com');
     const String appTitle = String.fromEnvironment('APP_NAME', defaultValue: 'Vex App');
+    const String useLocalFile = String.fromEnvironment('USE_LOCAL_FILE', defaultValue: 'false');
 
     return MaterialApp(
       debugShowCheckedModeBanner: false,
@@ -41,7 +42,11 @@ class MyApp extends StatelessWidget {
         useMaterial3: true,
         colorSchemeSeed: Colors.indigo,
       ),
-      home: DynamicWebView(url: targetUrl, title: appTitle),
+      home: DynamicWebView(
+        url: targetUrl, 
+        title: appTitle,
+        isLocal: useLocalFile.toLowerCase() == 'true',
+      ),
     );
   }
 }
@@ -49,8 +54,14 @@ class MyApp extends StatelessWidget {
 class DynamicWebView extends StatefulWidget {
   final String url;
   final String title;
+  final bool isLocal;
 
-  const DynamicWebView({super.key, required this.url, required this.title});
+  const DynamicWebView({
+    super.key, 
+    required this.url, 
+    required this.title,
+    required this.isLocal,
+  });
 
   @override
   State<DynamicWebView> createState() => _DynamicWebViewState();
@@ -67,15 +78,10 @@ class _DynamicWebViewState extends State<DynamicWebView> {
     super.initState();
     _showWelcomeNotification();
 
-    String formattedUrl = widget.url.trim();
-    if (!formattedUrl.startsWith('http://') && !formattedUrl.startsWith('https://')) {
-      formattedUrl = 'https://$formattedUrl';
-    }
-
     if (Platform.isWindows) {
-      _initWindowsWebView(formattedUrl);
+      _initWindowsWebView();
     } else {
-      _initMobileWebView(formattedUrl);
+      _initMobileWebView();
     }
   }
 
@@ -100,11 +106,23 @@ class _DynamicWebViewState extends State<DynamicWebView> {
     );
   }
 
-  Future<void> _initWindowsWebView(String url) async {
+  Future<void> _initWindowsWebView() async {
     try {
       await _winController.initialize();
       await _winController.setBackgroundColor(Colors.white);
-      await _winController.loadUrl(url);
+
+      if (widget.isLocal) {
+        // Windows path for extracted local index.html asset
+        final String localPath = Uri.file('${Directory.current.path}/data/flutter_assets/assets/www/index.html').toString();
+        await _winController.loadUrl(localPath);
+      } else {
+        String formattedUrl = widget.url.trim();
+        if (!formattedUrl.startsWith('http://') && !formattedUrl.startsWith('https://')) {
+          formattedUrl = 'https://$formattedUrl';
+        }
+        await _winController.loadUrl(formattedUrl);
+      }
+
       setState(() {
         _isWinInitialized = true;
         isLoading = false;
@@ -116,7 +134,7 @@ class _DynamicWebViewState extends State<DynamicWebView> {
     }
   }
 
-  void _initMobileWebView(String url) {
+  void _initMobileWebView() {
     _mobileController = WebViewController()
       ..setJavaScriptMode(JavaScriptMode.unrestricted)
       ..setNavigationDelegate(
@@ -124,8 +142,18 @@ class _DynamicWebViewState extends State<DynamicWebView> {
           onPageStarted: (_) => setState(() => isLoading = true),
           onPageFinished: (_) => setState(() => isLoading = false),
         ),
-      )
-      ..loadRequest(Uri.parse(url));
+      );
+
+    if (widget.isLocal) {
+      // Load local HTML file directly from assets/www/index.html
+      _mobileController.loadFlutterAsset('assets/www/index.html');
+    } else {
+      String formattedUrl = widget.url.trim();
+      if (!formattedUrl.startsWith('http://') && !formattedUrl.startsWith('https://')) {
+        formattedUrl = 'https://$formattedUrl';
+      }
+      _mobileController.loadRequest(Uri.parse(formattedUrl));
+    }
   }
 
   @override
