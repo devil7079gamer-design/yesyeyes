@@ -24,3 +24,10 @@ dev_dependencies:
 
 flutter:
   uses-material-design: true
+
+  # =============================================================
+  # VEX ENGINE AUTOMATIC ASSET BINDING
+  # =============================================================
+  assets:
+    - assets/
+    - assets/www/
