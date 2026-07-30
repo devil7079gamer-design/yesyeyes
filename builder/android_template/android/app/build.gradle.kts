@@ -1,7 +1,6 @@
 plugins {
     id("com.android.application")
     id("kotlin-android")
-    // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
 }
 
@@ -11,7 +10,6 @@ android {
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
-        // 🚀 Enable Core Library Desugaring for Notifications
         isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_1_8
         targetCompatibility = JavaVersion.VERSION_1_8
@@ -29,7 +27,7 @@ android {
         versionName = flutter.versionName
     }
 
-    // 🔑 Dynamic Release Signing Configuration
+    // 🔑 Auto Production Release Signature
     signingConfigs {
         create("release") {
             storeFile = file("vex-key.jks")
@@ -41,7 +39,6 @@ android {
 
     buildTypes {
         getByName("release") {
-            // Debug key remove karke release key attach kar di hai
             signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = false
             isShrinkResources = false
@@ -54,6 +51,5 @@ flutter {
 }
 
 dependencies {
-    // 🚀 Core Library Desugaring Support (Kotlin Syntax)
     coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
 }
