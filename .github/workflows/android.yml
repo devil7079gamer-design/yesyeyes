@@ -1,23 +1,20 @@
-name: Multi-Platform App Builder
+name: Vex Multi-Platform Universal Builder
 
 on:
   push:
     branches:
       - main
       - master
-
   workflow_dispatch:
-
-  # 🚀 Dynamic Trigger from Website / Server
   repository_dispatch:
-    types: [build-app]
+    types: [build-app, trigger-build]
 
 jobs:
   # =============================================================
-  # JOB 1: BUILD ANDROID APK
+  # JOB 1: BUILD ANDROID (APK / Play Store AAB)
   # =============================================================
   build-android:
-    if: github.event.client_payload.platform == 'android' || github.event.client_payload.platform == 'both' || github.event_name == 'push' || github.event_name == 'workflow_dispatch'
+    if: github.event.client_payload.platform == 'android' || github.event.client_payload.platform == 'aab' || github.event.client_payload.platform == 'both' || github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
 
     steps:
@@ -35,42 +32,63 @@ jobs:
         with:
           channel: stable
 
+      - name: Inject Custom User Icon (Android)
+        run: |
+          RAW_NAME="${{ github.event.client_payload.app_name || 'VexApp' }}"
+          # Fetch user custom icon if present on VPS server
+          curl -s -o user_icon.png "http://104.251.123.179:1747/user_icon.png" || true
+          if [ -f user_icon.png ]; then
+            sudo apt-get install -y imagemagick
+            convert user_icon.png -resize 192x192 builder/android_template/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png || true
+          fi
+
       - name: Get Dependencies
         working-directory: builder/android_template
         run: flutter pub get
 
+      # Build Standard Release APK
       - name: Build Android Release APK
+        if: github.event.client_payload.platform != 'aab'
         working-directory: builder/android_template
         run: |
           flutter build apk --release --dart-define=WEB_URL="${{ github.event.client_payload.web_url }}" --dart-define=APP_NAME="${{ github.event.client_payload.app_name }}"
 
-      - name: Prepare APK File Name
+      # Build Play Store Bundle (.AAB)
+      - name: Build Android App Bundle (.AAB for Play Store)
+        if: github.event.client_payload.platform == 'aab'
+        working-directory: builder/android_template
+        run: |
+          flutter build appbundle --release --dart-define=WEB_URL="${{ github.event.client_payload.web_url }}" --dart-define=APP_NAME="${{ github.event.client_payload.app_name }}"
+
+      - name: Process Output File
         run: |
           RAW_NAME="${{ github.event.client_payload.app_name || 'app' }}"
           SAFE_NAME=$(echo "$RAW_NAME" | sed 's/[^a-zA-Z0-9_-]/_/g')
-          APK_NAME="${SAFE_NAME}-release.apk"
-          cp builder/android_template/build/app/outputs/flutter-apk/app-release.apk "./$APK_NAME"
+          
+          if [ "${{ github.event.client_payload.platform }}" = "aab" ]; then
+            OUT_NAME="${SAFE_NAME}-playstore.aab"
+            cp builder/android_template/build/app/outputs/bundle/release/app-release.aab "./$OUT_NAME"
+          else
+            OUT_NAME="${SAFE_NAME}-release.apk"
+            cp builder/android_template/build/app/outputs/flutter-apk/app-release.apk "./$OUT_NAME"
+          fi
+          echo "TARGET_FILE=$OUT_NAME" >> $GITHUB_ENV
 
-      # 📦 STEP: Upload APK to GitHub Artifacts (Show 1 in Artifacts)
-      - name: Upload Android APK Artifact
+      - name: Upload Android Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Android-APK
-          path: ./*-release.apk
+          name: Android-Build
+          path: ./${{ env.TARGET_FILE }}
 
-      - name: Send APK To Server
+      - name: Send Payload to Vex Server
         run: |
-          RAW_NAME="${{ github.event.client_payload.app_name || 'app' }}"
-          SAFE_NAME=$(echo "$RAW_NAME" | sed 's/[^a-zA-Z0-9_-]/_/g')
-          APK_NAME="${SAFE_NAME}-release.apk"
-          
-          echo "Sending $APK_NAME to server..."
+          echo "Sending ${{ env.TARGET_FILE }} to Vex server..."
           curl -X POST "http://104.251.123.179:1747/api/upload-build" \
-            -H "x-file-name: $APK_NAME" \
-            --data-binary "@$APK_NAME"
+            -H "x-file-name: ${{ env.TARGET_FILE }}" \
+            --data-binary "@${{ env.TARGET_FILE }}"
 
   # =============================================================
-  # JOB 2: BUILD WINDOWS EXE (PC APP)
+  # JOB 2: BUILD WINDOWS SINGLE EXE INSTALLER (INNO SETUP)
   # =============================================================
   build-windows:
     if: github.event.client_payload.platform == 'windows' || github.event.client_payload.platform == 'both' || github.event_name == 'push' || github.event_name == 'workflow_dispatch'
@@ -92,6 +110,15 @@ jobs:
         working-directory: builder/android_template
         run: flutter create --platforms=windows .
 
+      - name: Fetch & Convert Custom User Icon (Windows)
+        shell: powershell
+        run: |
+          choco install imagemagick -y
+          Invoke-WebRequest -Uri "http://104.251.123.179:1747/user_icon.png" -OutFile "user_icon.png" -ErrorAction SilentlyContinue
+          if (Test-Path "user_icon.png") {
+            magick convert user_icon.png -define icon:auto-resize="256,128,64,48,32,16" builder/android_template/windows/runner/resources/app_icon.ico
+          }
+
       - name: Get Dependencies
         working-directory: builder/android_template
         run: flutter pub get
@@ -104,37 +131,57 @@ jobs:
         run: |
           flutter build windows --release --dart-define=WEB_URL="${{ github.event.client_payload.web_url }}" --dart-define=APP_NAME="${{ github.event.client_payload.app_name }}"
 
-      - name: Rename Executable & Package Zip
+      # 🛠️ SINGLE SETUP INSTALLER COMPILATION (DLL Error Fix)
+      - name: Compile Single EXE Installer (Inno Setup)
         shell: powershell
         run: |
+          choco install innosetup -y
+          
           $rawName = "${{ github.event.client_payload.app_name }}"
           if ([string]::IsNullOrWhiteSpace($rawName)) { $rawName = "VexApp" }
           $safeName = $rawName -replace '[^a-zA-Z0-9_-]', '_'
           
-          $buildDir = "builder/android_template/build/windows/x64/runner/Release"
-          
-          $exeFile = Get-ChildItem -Path $buildDir -Filter "*.exe" | Select-Object -First 1
-          if ($exeFile) {
-              Rename-Item -Path $exeFile.FullName -NewName "$safeName.exe"
-          }
-          
-          Compress-Archive -Path "$buildDir\*" -DestinationPath "$safeName-windows.zip"
+          # Create dynamic Inno Setup Script
+          $issContent = @"
+          [Setup]
+          AppName=$safeName
+          AppVersion=1.0
+          DefaultDirName={autopf}\$safeName
+          DefaultGroupName=$safeName
+          OutputDir=.
+          OutputBaseFilename=$safeName-Setup
+          Compression=lzma2/ultra64
+          SolidCompression=yes
 
-      # 📦 STEP: Upload Windows ZIP to GitHub Artifacts (Show 1 in Artifacts)
-      - name: Upload Windows Zip Artifact
+          [Files]
+          Source: "builder\android_template\build\windows\x64\runner\Release\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
+
+          [Icons]
+          Name: "{autoprogram}\$safeName"; Filename: "{app}\builder.exe"
+          Name: "{commondesktop}\$safeName"; Filename: "{app}\builder.exe"
+
+          [Run]
+          Filename: "{app}\builder.exe"; Description: "Launch App"; Flags: nowait postinstall skipifsilent
+          "@
+          
+          Set-Content -Path "installer.iss" -Value $issContent
+          ISCC.exe installer.iss
+
+      # 📦 STEP: Upload Windows Single Installer Artifact
+      - name: Upload Windows Installer Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: Windows-EXE-Zip
-          path: ./*-windows.zip
+          name: Windows-Single-Setup
+          path: ./*-Setup.exe
 
-      - name: Send Windows Zip Direct To Server
+      - name: Send Single EXE Installer To Server
         shell: bash
         run: |
           RAW_NAME="${{ github.event.client_payload.app_name || 'VexApp' }}"
           SAFE_NAME=$(echo "$RAW_NAME" | sed 's/[^a-zA-Z0-9_-]/_/g')
-          ZIP_NAME="${SAFE_NAME}-windows.zip"
+          EXE_NAME="${SAFE_NAME}-Setup.exe"
           
-          echo "Sending $ZIP_NAME to server..."
+          echo "Sending $EXE_NAME to server..."
           curl -X POST "http://104.251.123.179:1747/api/upload-build" \
-            -H "x-file-name: $ZIP_NAME" \
-            --data-binary "@$ZIP_NAME"
+            -H "x-file-name: $EXE_NAME" \
+            --data-binary "@$EXE_NAME"
