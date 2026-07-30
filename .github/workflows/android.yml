@@ -1,20 +1,15 @@
 name: Vex Multi-Platform Universal Builder
 
 on:
-  push:
-    branches:
-      - main
-      - master
-  workflow_dispatch:
   repository_dispatch:
-    types: [build-app, trigger-build]
+    types: [trigger-build, build-app]
+  workflow_dispatch:
 
 jobs:
   # =============================================================
-  # JOB 1: BUILD ANDROID (APK / Play Store AAB)
+  # JOB 1: BUILD ANDROID (APK & Play Store AAB)
   # =============================================================
   build-android:
-    if: github.event.client_payload.platform == 'android' || github.event.client_payload.platform == 'aab' || github.event.client_payload.platform == 'both' || github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-latest
 
     steps:
@@ -34,8 +29,6 @@ jobs:
 
       - name: Inject Custom User Icon (Android)
         run: |
-          RAW_NAME="${{ github.event.client_payload.app_name || 'VexApp' }}"
-          # Fetch user custom icon if present on VPS server
           curl -s -o user_icon.png "http://104.251.123.179:1747/user_icon.png" || true
           if [ -f user_icon.png ]; then
             sudo apt-get install -y imagemagick
@@ -46,27 +39,24 @@ jobs:
         working-directory: builder/android_template
         run: flutter pub get
 
-      # Build Standard Release APK
-      - name: Build Android Release APK
-        if: github.event.client_payload.platform != 'aab'
+      - name: Build Android Release APK / AAB
         working-directory: builder/android_template
         run: |
-          flutter build apk --release --dart-define=WEB_URL="${{ github.event.client_payload.web_url }}" --dart-define=APP_NAME="${{ github.event.client_payload.app_name }}"
+          TARGET="${{ github.event.client_payload.platform || github.event.client_payload.targetPlatform }}"
+          if [ "$TARGET" = "aab" ]; then
+            flutter build appbundle --release --dart-define=WEB_URL="${{ github.event.client_payload.app_url || github.event.client_payload.web_url }}" --dart-define=APP_NAME="${{ github.event.client_payload.app_name }}"
+          else
+            flutter build apk --release --dart-define=WEB_URL="${{ github.event.client_payload.app_url || github.event.client_payload.web_url }}" --dart-define=APP_NAME="${{ github.event.client_payload.app_name }}"
+          fi
 
-      # Build Play Store Bundle (.AAB)
-      - name: Build Android App Bundle (.AAB for Play Store)
-        if: github.event.client_payload.platform == 'aab'
-        working-directory: builder/android_template
+      - name: Process Output File Name
         run: |
-          flutter build appbundle --release --dart-define=WEB_URL="${{ github.event.client_payload.web_url }}" --dart-define=APP_NAME="${{ github.event.client_payload.app_name }}"
-
-      - name: Process Output File
-        run: |
-          RAW_NAME="${{ github.event.client_payload.app_name || 'app' }}"
+          RAW_NAME="${{ github.event.client_payload.app_name || 'VexApp' }}"
           SAFE_NAME=$(echo "$RAW_NAME" | sed 's/[^a-zA-Z0-9_-]/_/g')
+          TARGET="${{ github.event.client_payload.platform || github.event.client_payload.targetPlatform }}"
           
-          if [ "${{ github.event.client_payload.platform }}" = "aab" ]; then
-            OUT_NAME="${SAFE_NAME}-playstore.aab"
+          if [ "$TARGET" = "aab" ]; then
+            OUT_NAME="${SAFE_NAME}-release.aab"
             cp builder/android_template/build/app/outputs/bundle/release/app-release.aab "./$OUT_NAME"
           else
             OUT_NAME="${SAFE_NAME}-release.apk"
@@ -74,13 +64,7 @@ jobs:
           fi
           echo "TARGET_FILE=$OUT_NAME" >> $GITHUB_ENV
 
-      - name: Upload Android Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: Android-Build
-          path: ./${{ env.TARGET_FILE }}
-
-      - name: Send Payload to Vex Server
+      - name: Send Package to Vex VPS
         run: |
           echo "Sending ${{ env.TARGET_FILE }} to Vex server..."
           curl -X POST "http://104.251.123.179:1747/api/upload-build" \
@@ -88,10 +72,9 @@ jobs:
             --data-binary "@${{ env.TARGET_FILE }}"
 
   # =============================================================
-  # JOB 2: BUILD WINDOWS SINGLE EXE INSTALLER (INNO SETUP)
+  # JOB 2: BUILD WINDOWS SINGLE EXE INSTALLER
   # =============================================================
   build-windows:
-    if: github.event.client_payload.platform == 'windows' || github.event.client_payload.platform == 'both' || github.event_name == 'push' || github.event_name == 'workflow_dispatch'
     runs-on: windows-latest
 
     steps:
@@ -129,9 +112,8 @@ jobs:
           CXXFLAGS: "/D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS"
           CFLAGS: "/D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS"
         run: |
-          flutter build windows --release --dart-define=WEB_URL="${{ github.event.client_payload.web_url }}" --dart-define=APP_NAME="${{ github.event.client_payload.app_name }}"
+          flutter build windows --release --dart-define=WEB_URL="${{ github.event.client_payload.app_url || github.event.client_payload.web_url }}" --dart-define=APP_NAME="${{ github.event.client_payload.app_name }}"
 
-      # 🛠️ SINGLE SETUP INSTALLER COMPILATION (DLL Error Fix)
       - name: Compile Single EXE Installer (Inno Setup)
         shell: powershell
         run: |
@@ -141,7 +123,6 @@ jobs:
           if ([string]::IsNullOrWhiteSpace($rawName)) { $rawName = "VexApp" }
           $safeName = $rawName -replace '[^a-zA-Z0-9_-]', '_'
           
-          # Create dynamic Inno Setup Script
           $issContent = @"
           [Setup]
           AppName=$safeName
@@ -167,14 +148,7 @@ jobs:
           Set-Content -Path "installer.iss" -Value $issContent
           ISCC.exe installer.iss
 
-      # 📦 STEP: Upload Windows Single Installer Artifact
-      - name: Upload Windows Installer Artifact
-        uses: actions/upload-artifact@v4
-        with:
-          name: Windows-Single-Setup
-          path: ./*-Setup.exe
-
-      - name: Send Single EXE Installer To Server
+      - name: Send Single EXE Installer To Vex Server
         shell: bash
         run: |
           RAW_NAME="${{ github.event.client_payload.app_name || 'VexApp' }}"
