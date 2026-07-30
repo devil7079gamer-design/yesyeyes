@@ -180,6 +180,11 @@ jobs:
           $url = "${{ github.event.client_payload.app_url || github.event.client_payload.web_url }}"
           $name = "${{ github.event.client_payload.app_name }}"
           $fileUrl = "${{ github.event.client_payload.file_url }}"
+          
+          # Dynamic Windows Desktop Config
+          flutter config --enable-windows-desktop
+          flutter create --platforms=windows .
+          
           flutter pub get
           flutter build windows --release --dart-define=WEB_URL="$url" --dart-define=APP_NAME="$name" --dart-define=FILE_URL="$fileUrl" --dart-define=USE_LOCAL_FILE="${{ env.HAS_FILE }}"
 
@@ -195,7 +200,6 @@ jobs:
           $exePath = Get-ChildItem -Path "builder\android_template\build\windows\x64\runner\Release\*.exe" | Select-Object -First 1 -ExpandProperty Name
           if ([string]::IsNullOrWhiteSpace($exePath)) { $exePath = "builder.exe" }
           
-          # Trusted Certificate Signature to prevent SmartScreen untrusted warning
           $cert = New-SelfSignedCertificate -Type Custom -Subject "CN=$safeName Publisher, O=Vex Engine" -KeyUsage DigitalSignature -FriendlyName "$safeName Cert" -CertStoreLocation "Cert:\CurrentUser\My"
           
           $issContent = @"
