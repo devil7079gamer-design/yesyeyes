@@ -59,18 +59,18 @@ jobs:
             echo "HAS_FILE=false" >> $GITHUB_ENV
           fi
 
-      - name: Inject License & Multi-Res User Icons
+      - name: Download & Setup User App Icon
         run: |
-          echo "Software License - Registered to Vex Engine" > builder/android_template/assets/LICENSE.txt
+          mkdir -p builder/android_template/assets
+          curl -s -o builder/android_template/assets/user_icon.png "http://104.251.123.179:1747/user_icon.png" || true
           
-          curl -s -o user_icon.png "http://104.251.123.179:1747/user_icon.png" || true
-          if [ -f user_icon.png ]; then
-            sudo apt-get install -y imagemagick
-            convert user_icon.png -resize 192x192 builder/android_template/android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png || true
-            convert user_icon.png -resize 144x144 builder/android_template/android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png || true
-            convert user_icon.png -resize 96x96 builder/android_template/android/app/src/main/res/mipmap-xhdpi/ic_launcher.png || true
-            convert user_icon.png -resize 72x72 builder/android_template/android/app/src/main/res/mipmap-hdpi/ic_launcher.png || true
-            convert user_icon.png -resize 48x48 builder/android_template/android/app/src/main/res/mipmap-mdpi/ic_launcher.png || true
+          if [ -f builder/android_template/assets/user_icon.png ]; then
+            echo "[VEX ENGINE] Custom icon found. Generating launcher icons..."
+            cd builder/android_template
+            flutter pub get
+            flutter pub run flutter_launcher_icons:main
+          else
+            echo "[VEX ENGINE] No custom icon found. Using default."
           fi
 
       - name: Auto-Generate Play Store Keystore Certificate
@@ -169,6 +169,16 @@ jobs:
             echo "HAS_FILE=true" >> $env:GITHUB_ENV
           } else {
             echo "HAS_FILE=false" >> $env:GITHUB_ENV
+          }
+
+      - name: Download & Setup User App Icon (Windows)
+        shell: powershell
+        run: |
+          Invoke-WebRequest -Uri "http://104.251.123.179:1747/user_icon.png" -OutFile "builder\android_template\assets\user_icon.png" -ErrorAction SilentlyContinue
+          if (Test-Path "builder\android_template\assets\user_icon.png") {
+            Set-Location "builder\android_template"
+            flutter pub get
+            flutter pub run flutter_launcher_icons:main
           }
 
       - name: Build Windows Executable
