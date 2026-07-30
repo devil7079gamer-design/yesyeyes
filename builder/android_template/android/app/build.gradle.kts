@@ -29,10 +29,22 @@ android {
         versionName = flutter.versionName
     }
 
+    // 🔑 Dynamic Release Signing Configuration
+    signingConfigs {
+        create("release") {
+            storeFile = file("vex-key.jks")
+            storePassword = "VexAppPass123"
+            keyAlias = "vexkey"
+            keyPassword = "VexAppPass123"
+        }
+    }
+
     buildTypes {
-        release {
-            // Signing with the debug keys for now
-            signingConfig = signingConfigs.getByName("debug")
+        getByName("release") {
+            // Debug key remove karke release key attach kar di hai
+            signingConfig = signingConfigs.getByName("release")
+            isMinifyEnabled = false
+            isShrinkResources = false
         }
     }
 }
