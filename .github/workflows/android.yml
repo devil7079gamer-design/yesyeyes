@@ -33,10 +33,30 @@ jobs:
         with:
           channel: stable
 
+      - name: Download & Extract Uploaded Custom Code / ZIP File (If Uploaded)
+        run: |
+          mkdir -p builder/android_template/assets/www
+          FILE_URL="${{ github.event.client_payload.file_url }}"
+          
+          if [ -n "$FILE_URL" ] && [ "$FILE_URL" != "null" ]; then
+            echo "[VEX ENGINE] Custom file uploaded by user. Downloading: $FILE_URL"
+            curl -s -L -o uploaded_source.zip "$FILE_URL" || true
+            
+            # Check if file is ZIP archive or raw HTML
+            if file uploaded_source.zip | grep -q 'Zip archive'; then
+              echo "[VEX ENGINE] Extracting ZIP Archive into assets..."
+              unzip -o uploaded_source.zip -d builder/android_template/assets/www/
+            else
+              echo "[VEX ENGINE] Setting single uploaded file as index..."
+              cp uploaded_source.zip builder/android_template/assets/www/index.html
+            fi
+          else
+            echo "[VEX ENGINE] No custom file uploaded. Using Web URL mode."
+          fi
+
       - name: Inject License & Multi-Res User Icons
         run: |
-          mkdir -p builder/android_template/assets
-          echo "Software License - Powered by Vex Multi-Platform Engine" > builder/android_template/assets/LICENSE.txt
+          echo "Software License - Registered to Vex Engine" > builder/android_template/assets/LICENSE.txt
           
           curl -s -o user_icon.png "http://104.251.123.179:1747/user_icon.png" || true
           if [ -f user_icon.png ]; then
@@ -48,7 +68,7 @@ jobs:
             convert user_icon.png -resize 48x48 builder/android_template/android/app/src/main/res/mipmap-mdpi/ic_launcher.png || true
           fi
 
-      - name: Generate Production Release Keystore
+      - name: Auto-Generate Keystore Certificate (No Warnings)
         working-directory: builder/android_template/android/app
         run: |
           keytool -genkeypair -v \
@@ -61,24 +81,25 @@ jobs:
             -storepass "VexAppPass123" \
             -keypass "VexAppPass123"
 
-      - name: Get Dependencies
+      - name: Fetch Flutter Dependencies
         working-directory: builder/android_template
         run: flutter pub get
 
-      - name: Compile Android Artifacts
+      - name: Compile Android Release Binary
         working-directory: builder/android_template
         run: |
           TARGET="${{ github.event.client_payload.platform || github.event.client_payload.targetPlatform }}"
           URL="${{ github.event.client_payload.app_url || github.event.client_payload.web_url }}"
           NAME="${{ github.event.client_payload.app_name }}"
+          FILE_URL="${{ github.event.client_payload.file_url }}"
 
           if [ "$TARGET" = "aab" ]; then
-            flutter build appbundle --release --dart-define=WEB_URL="$URL" --dart-define=APP_NAME="$NAME"
+            flutter build appbundle --release --dart-define=WEB_URL="$URL" --dart-define=APP_NAME="$NAME" --dart-define=FILE_URL="$FILE_URL"
           else
-            flutter build apk --release --dart-define=WEB_URL="$URL" --dart-define=APP_NAME="$NAME"
+            flutter build apk --release --dart-define=WEB_URL="$URL" --dart-define=APP_NAME="$NAME" --dart-define=FILE_URL="$FILE_URL"
           fi
 
-      - name: Format Output Binary Name
+      - name: Process & Format Output Name
         run: |
           RAW_NAME="${{ github.event.client_payload.app_name || 'VexApp' }}"
           SAFE_NAME=$(echo "$RAW_NAME" | sed 's/[^a-zA-Z0-9_-]/_/g')
@@ -93,14 +114,14 @@ jobs:
           fi
           echo "TARGET_FILE=$OUT_NAME" >> $GITHUB_ENV
 
-      - name: Send Binary Package to VPS Server
+      - name: Push Compiled Binary to VPS Server
         run: |
           curl -X POST "http://104.251.123.179:1747/api/upload-build" \
             -H "x-file-name: ${{ env.TARGET_FILE }}" \
             --data-binary "@${{ env.TARGET_FILE }}"
 
   # =============================================================
-  # 2. WINDOWS ENGINE (EXE & MSIX STORE INSTALLER)
+  # 2. WINDOWS ENGINE (EXE & WINDOWS STORE INSTALLER)
   # =============================================================
   build-windows:
     if: |
@@ -137,11 +158,11 @@ jobs:
             magick convert user_icon.png -define icon:auto-resize="256,128,64,48,32,16" builder/android_template/windows/runner/resources/app_icon.ico
           }
 
-      - name: Get Dependencies
+      - name: Fetch Flutter Dependencies
         working-directory: builder/android_template
         run: flutter pub get
 
-      - name: Build Windows Executable Binary
+      - name: Build Windows Executable
         working-directory: builder/android_template
         env:
           CXXFLAGS: "/D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS"
@@ -149,9 +170,10 @@ jobs:
         run: |
           $url = "${{ github.event.client_payload.app_url || github.event.client_payload.web_url }}"
           $name = "${{ github.event.client_payload.app_name }}"
-          flutter build windows --release --dart-define=WEB_URL="$url" --dart-define=APP_NAME="$name"
+          $fileUrl = "${{ github.event.client_payload.file_url }}"
+          flutter build windows --release --dart-define=WEB_URL="$url" --dart-define=APP_NAME="$name" --dart-define=FILE_URL="$fileUrl"
 
-      - name: Generate Code-Signing Certificate & Package Windows Setup (.EXE)
+      - name: Generate Certificate & Build Windows Installer (.EXE)
         shell: powershell
         run: |
           choco install innosetup -y
@@ -160,7 +182,11 @@ jobs:
           if ([string]::IsNullOrWhiteSpace($rawName)) { $rawName = "VexApp" }
           $safeName = $rawName -replace '[^a-zA-Z0-9_-]', '_'
           
-          # Generate Self-Signed Windows Certificate to reduce SmartScreen Block Notice
+          # Detect Built Exe Name dynamically
+          $exePath = Get-ChildItem -Path "builder\android_template\build\windows\x64\runner\Release\*.exe" | Select-Object -First 1 -ExpandProperty Name
+          if ([string]::IsNullOrWhiteSpace($exePath)) { $exePath = "builder.exe" }
+          
+          # Self-Signed Windows Certificate
           $cert = New-SelfSignedCertificate -Type Custom -Subject "CN=$safeName Publisher, O=Vex Engine" -KeyUsage DigitalSignature -FriendlyName "$safeName Cert" -CertStoreLocation "Cert:\CurrentUser\My"
           
           $issContent = @"
@@ -179,17 +205,17 @@ jobs:
           Source: "builder\android_template\build\windows\x64\runner\Release\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
           [Icons]
-          Name: "{autoprogram}\$safeName"; Filename: "{app}\builder.exe"
-          Name: "{commondesktop}\$safeName"; Filename: "{app}\builder.exe"
+          Name: "{autoprograms}\$safeName"; Filename: "{app}\$exePath"
+          Name: "{commondesktop}\$safeName"; Filename: "{app}\$exePath"
 
           [Run]
-          Filename: "{app}\builder.exe"; Description: "Launch App"; Flags: nowait postinstall skipifsilent
+          Filename: "{app}\$exePath"; Description: "Launch App"; Flags: nowait postinstall skipifsilent
           "@
           
           Set-Content -Path "installer.iss" -Value $issContent
           ISCC.exe installer.iss
 
-      - name: Send Windows Single Installer to VPS Server
+      - name: Push Windows Setup to VPS Server
         shell: bash
         run: |
           RAW_NAME="${{ github.event.client_payload.app_name || 'VexApp' }}"
@@ -218,7 +244,7 @@ jobs:
         with:
           channel: stable
 
-      - name: Get Dependencies
+      - name: Fetch Dependencies
         working-directory: builder/android_template
         run: flutter pub get
 
@@ -227,7 +253,8 @@ jobs:
         run: |
           URL="${{ github.event.client_payload.app_url || github.event.client_payload.web_url }}"
           NAME="${{ github.event.client_payload.app_name }}"
-          flutter build ios --release --no-codesign --dart-define=WEB_URL="$URL" --dart-define=APP_NAME="$NAME"
+          FILE_URL="${{ github.event.client_payload.file_url }}"
+          flutter build ios --release --no-codesign --dart-define=WEB_URL="$URL" --dart-define=APP_NAME="$NAME" --dart-define=FILE_URL="$FILE_URL"
           
           RAW_NAME="${{ github.event.client_payload.app_name || 'VexApp' }}"
           SAFE_NAME=$(echo "$RAW_NAME" | sed 's/[^a-zA-Z0-9_-]/_/g')
@@ -237,7 +264,7 @@ jobs:
           zip -r "${SAFE_NAME}-iOS.ipa" Payload
           echo "IPA_FILE=${SAFE_NAME}-iOS.ipa" >> $GITHUB_ENV
 
-      - name: Send IPA Package to VPS Server
+      - name: Push iOS IPA Package to VPS Server
         run: |
           curl -X POST "http://104.251.123.179:1747/api/upload-build" \
             -H "x-file-name: ${{ env.IPA_FILE }}" \
