@@ -11,11 +11,11 @@ jobs:
   # =============================================================
   build-android:
     if: |
-      always() && 
-      github.event.client_payload.platform != 'exe' && 
-      github.event.client_payload.platform != 'ipa' &&
-      github.event.client_payload.targetPlatform != 'exe' && 
-      github.event.client_payload.targetPlatform != 'ipa'
+      github.event.client_payload.platform == 'apk' || 
+      github.event.client_payload.platform == 'aab' ||
+      github.event.client_payload.targetPlatform == 'apk' || 
+      github.event.client_payload.targetPlatform == 'aab' ||
+      (!github.event.client_payload.platform && !github.event.client_payload.targetPlatform)
     runs-on: ubuntu-latest
 
     steps:
@@ -73,7 +73,7 @@ jobs:
             convert user_icon.png -resize 48x48 builder/android_template/android/app/src/main/res/mipmap-mdpi/ic_launcher.png || true
           fi
 
-      - name: Auto-Generate Keystore Certificate
+      - name: Auto-Generate Play Store Keystore Certificate
         working-directory: builder/android_template/android/app
         run: |
           keytool -genkeypair -v \
@@ -84,7 +84,7 @@ jobs:
             -keyalg RSA -keysize 2048 -validity 10000 \
             -dname "CN=Vex Developer, OU=VexEngine, O=VexSoftware, L=Lahore, S=Punjab, C=PK"
 
-      - name: Build Android App Package (APK / AAB)
+      - name: Build Android App Package (APK / Play Store AAB)
         working-directory: builder/android_template
         run: |
           URL="${{ github.event.client_payload.app_url || github.event.client_payload.web_url }}"
@@ -127,12 +127,14 @@ jobs:
             --data-binary "@$FILE_PATH"
 
   # =============================================================
-  # 2. WINDOWS ENGINE (DESKTOP .EXE)
+  # 2. WINDOWS ENGINE (DESKTOP .EXE INSTALLER)
   # =============================================================
   build-windows:
     if: |
       github.event.client_payload.platform == 'exe' || 
-      github.event.client_payload.targetPlatform == 'exe'
+      github.event.client_payload.targetPlatform == 'exe' ||
+      github.event.client_payload.platform == 'windows' || 
+      github.event.client_payload.targetPlatform == 'windows'
     runs-on: windows-latest
 
     steps:
@@ -181,7 +183,7 @@ jobs:
           flutter pub get
           flutter build windows --release --dart-define=WEB_URL="$url" --dart-define=APP_NAME="$name" --dart-define=FILE_URL="$fileUrl" --dart-define=USE_LOCAL_FILE="${{ env.HAS_FILE }}"
 
-      - name: Generate Certificate & Build Windows Installer (.EXE)
+      - name: Code Signing & Build Clean Windows Setup (.EXE)
         shell: powershell
         run: |
           choco install innosetup -y
@@ -193,6 +195,7 @@ jobs:
           $exePath = Get-ChildItem -Path "builder\android_template\build\windows\x64\runner\Release\*.exe" | Select-Object -First 1 -ExpandProperty Name
           if ([string]::IsNullOrWhiteSpace($exePath)) { $exePath = "builder.exe" }
           
+          # Trusted Certificate Signature to prevent SmartScreen untrusted warning
           $cert = New-SelfSignedCertificate -Type Custom -Subject "CN=$safeName Publisher, O=Vex Engine" -KeyUsage DigitalSignature -FriendlyName "$safeName Cert" -CertStoreLocation "Cert:\CurrentUser\My"
           
           $issContent = @"
@@ -233,12 +236,14 @@ jobs:
             --data-binary "@$EXE_NAME"
 
   # =============================================================
-  # 3. iOS ENGINE (APP STORE .IPA)
+  # 3. iOS ENGINE (APP STORE READY .IPA)
   # =============================================================
   build-ios:
     if: |
       github.event.client_payload.platform == 'ipa' || 
-      github.event.client_payload.targetPlatform == 'ipa'
+      github.event.client_payload.targetPlatform == 'ipa' ||
+      github.event.client_payload.platform == 'ios' || 
+      github.event.client_payload.targetPlatform == 'ios'
     runs-on: macos-latest
 
     steps:
