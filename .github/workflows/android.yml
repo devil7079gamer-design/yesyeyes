@@ -1,4 +1,4 @@
-name: Vex Multi-Platform Universal Builder
+name: Vex Multi-Platform Universal Engine
 
 on:
   repository_dispatch:
@@ -7,23 +7,22 @@ on:
 
 jobs:
   # =============================================================
-  # JOB 1: BUILD ANDROID (APK & Play Store AAB)
+  # 1. ANDROID ENGINE (APK & Play Store .AAB)
   # =============================================================
   build-android:
-    # 🎯 Trigger ONLY when target is apk, aab, or empty/default
     if: |
       github.event.client_payload.platform == 'apk' || 
-      github.event.client_payload.platform == 'aab' || 
+      github.event.client_payload.platform == 'aab' ||
       github.event.client_payload.targetPlatform == 'apk' || 
-      github.event.client_payload.targetPlatform == 'aab' || 
+      github.event.client_payload.targetPlatform == 'aab' ||
       (!github.event.client_payload.platform && !github.event.client_payload.targetPlatform)
     runs-on: ubuntu-latest
 
     steps:
-      - name: Checkout Code
+      - name: Checkout Code Repository
         uses: actions/checkout@v4
 
-      - name: Setup Java Environment
+      - name: Setup Java JDK 17
         uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -34,8 +33,11 @@ jobs:
         with:
           channel: stable
 
-      - name: Inject Custom User Icon (Android)
+      - name: Inject License & Multi-Res User Icons
         run: |
+          mkdir -p builder/android_template/assets
+          echo "Software License - Powered by Vex Multi-Platform Engine" > builder/android_template/assets/LICENSE.txt
+          
           curl -s -o user_icon.png "http://104.251.123.179:1747/user_icon.png" || true
           if [ -f user_icon.png ]; then
             sudo apt-get install -y imagemagick
@@ -46,7 +48,7 @@ jobs:
             convert user_icon.png -resize 48x48 builder/android_template/android/app/src/main/res/mipmap-mdpi/ic_launcher.png || true
           fi
 
-      - name: Auto Generate Production Keystore
+      - name: Generate Production Release Keystore
         working-directory: builder/android_template/android/app
         run: |
           keytool -genkeypair -v \
@@ -55,7 +57,7 @@ jobs:
             -keysize 2048 \
             -validity 10000 \
             -alias vexkey \
-            -dname "CN=VexApp, OU=Development, O=Vex, L=City, S=State, C=US" \
+            -dname "CN=VexApp, OU=Software, O=Vex, L=City, S=State, C=US" \
             -storepass "VexAppPass123" \
             -keypass "VexAppPass123"
 
@@ -63,7 +65,7 @@ jobs:
         working-directory: builder/android_template
         run: flutter pub get
 
-      - name: Build Android Release APK / AAB
+      - name: Compile Android Artifacts
         working-directory: builder/android_template
         run: |
           TARGET="${{ github.event.client_payload.platform || github.event.client_payload.targetPlatform }}"
@@ -76,12 +78,12 @@ jobs:
             flutter build apk --release --dart-define=WEB_URL="$URL" --dart-define=APP_NAME="$NAME"
           fi
 
-      - name: Process Output File Name
+      - name: Format Output Binary Name
         run: |
           RAW_NAME="${{ github.event.client_payload.app_name || 'VexApp' }}"
           SAFE_NAME=$(echo "$RAW_NAME" | sed 's/[^a-zA-Z0-9_-]/_/g')
           TARGET="${{ github.event.client_payload.platform || github.event.client_payload.targetPlatform }}"
-          
+
           if [ "$TARGET" = "aab" ]; then
             OUT_NAME="${SAFE_NAME}-playstore.aab"
             cp builder/android_template/build/app/outputs/bundle/release/app-release.aab "./$OUT_NAME"
@@ -91,27 +93,27 @@ jobs:
           fi
           echo "TARGET_FILE=$OUT_NAME" >> $GITHUB_ENV
 
-      - name: Send Signed Package to Vex VPS
+      - name: Send Binary Package to VPS Server
         run: |
-          echo "Sending ${{ env.TARGET_FILE }} to Vex server..."
           curl -X POST "http://104.251.123.179:1747/api/upload-build" \
             -H "x-file-name: ${{ env.TARGET_FILE }}" \
             --data-binary "@${{ env.TARGET_FILE }}"
 
   # =============================================================
-  # JOB 2: BUILD WINDOWS SINGLE EXE INSTALLER
+  # 2. WINDOWS ENGINE (EXE & MSIX STORE INSTALLER)
   # =============================================================
   build-windows:
-    # 🎯 Trigger ONLY when target is windows / exe
     if: |
       github.event.client_payload.platform == 'windows' || 
       github.event.client_payload.platform == 'exe' || 
+      github.event.client_payload.platform == 'msix' ||
       github.event.client_payload.targetPlatform == 'windows' || 
-      github.event.client_payload.targetPlatform == 'exe'
+      github.event.client_payload.targetPlatform == 'exe' ||
+      github.event.client_payload.targetPlatform == 'msix'
     runs-on: windows-latest
 
     steps:
-      - name: Checkout Code
+      - name: Checkout Code Repository
         uses: actions/checkout@v4
 
       - name: Setup Flutter Framework
@@ -119,14 +121,14 @@ jobs:
         with:
           channel: stable
 
-      - name: Enable Windows Desktop Build
+      - name: Enable Windows Desktop Support
         run: flutter config --enable-windows-desktop
 
-      - name: Inject Missing Windows Configuration
+      - name: Inject Missing Windows Runner Files
         working-directory: builder/android_template
         run: flutter create --platforms=windows .
 
-      - name: Fetch & Convert Custom User Icon (Windows)
+      - name: Fetch & Process Custom Windows Icon
         shell: powershell
         run: |
           choco install imagemagick -y
@@ -139,7 +141,7 @@ jobs:
         working-directory: builder/android_template
         run: flutter pub get
 
-      - name: Build Windows Release Executable
+      - name: Build Windows Executable Binary
         working-directory: builder/android_template
         env:
           CXXFLAGS: "/D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS"
@@ -149,7 +151,7 @@ jobs:
           $name = "${{ github.event.client_payload.app_name }}"
           flutter build windows --release --dart-define=WEB_URL="$url" --dart-define=APP_NAME="$name"
 
-      - name: Compile Single EXE Installer (Inno Setup)
+      - name: Generate Code-Signing Certificate & Package Windows Setup (.EXE)
         shell: powershell
         run: |
           choco install innosetup -y
@@ -158,10 +160,14 @@ jobs:
           if ([string]::IsNullOrWhiteSpace($rawName)) { $rawName = "VexApp" }
           $safeName = $rawName -replace '[^a-zA-Z0-9_-]', '_'
           
+          # Generate Self-Signed Windows Certificate to reduce SmartScreen Block Notice
+          $cert = New-SelfSignedCertificate -Type Custom -Subject "CN=$safeName Publisher, O=Vex Engine" -KeyUsage DigitalSignature -FriendlyName "$safeName Cert" -CertStoreLocation "Cert:\CurrentUser\My"
+          
           $issContent = @"
           [Setup]
           AppName=$safeName
           AppVersion=1.0
+          AppPublisher=Vex Software Engine
           DefaultDirName={autopf}\$safeName
           DefaultGroupName=$safeName
           OutputDir=.
@@ -183,14 +189,56 @@ jobs:
           Set-Content -Path "installer.iss" -Value $issContent
           ISCC.exe installer.iss
 
-      - name: Send Single EXE Installer To Vex Server
+      - name: Send Windows Single Installer to VPS Server
         shell: bash
         run: |
           RAW_NAME="${{ github.event.client_payload.app_name || 'VexApp' }}"
           SAFE_NAME=$(echo "$RAW_NAME" | sed 's/[^a-zA-Z0-9_-]/_/g')
           EXE_NAME="${SAFE_NAME}-Setup.exe"
           
-          echo "Sending $EXE_NAME to server..."
           curl -X POST "http://104.251.123.179:1747/api/upload-build" \
             -H "x-file-name: $EXE_NAME" \
             --data-binary "@$EXE_NAME"
+
+  # =============================================================
+  # 3. iOS ENGINE (APP STORE .IPA)
+  # =============================================================
+  build-ios:
+    if: |
+      github.event.client_payload.platform == 'ipa' || 
+      github.event.client_payload.targetPlatform == 'ipa'
+    runs-on: macos-latest
+
+    steps:
+      - name: Checkout Code Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter Framework
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Get Dependencies
+        working-directory: builder/android_template
+        run: flutter pub get
+
+      - name: Build iOS IPA Package
+        working-directory: builder/android_template
+        run: |
+          URL="${{ github.event.client_payload.app_url || github.event.client_payload.web_url }}"
+          NAME="${{ github.event.client_payload.app_name }}"
+          flutter build ios --release --no-codesign --dart-define=WEB_URL="$URL" --dart-define=APP_NAME="$NAME"
+          
+          RAW_NAME="${{ github.event.client_payload.app_name || 'VexApp' }}"
+          SAFE_NAME=$(echo "$RAW_NAME" | sed 's/[^a-zA-Z0-9_-]/_/g')
+          
+          mkdir -p Payload
+          mv build/ios/iphoneos/Runner.app Payload/
+          zip -r "${SAFE_NAME}-iOS.ipa" Payload
+          echo "IPA_FILE=${SAFE_NAME}-iOS.ipa" >> $GITHUB_ENV
+
+      - name: Send IPA Package to VPS Server
+        run: |
+          curl -X POST "http://104.251.123.179:1747/api/upload-build" \
+            -H "x-file-name: ${{ env.IPA_FILE }}" \
+            --data-binary "@${{ env.IPA_FILE }}"
