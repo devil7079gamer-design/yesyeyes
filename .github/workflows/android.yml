@@ -33,25 +33,31 @@ jobs:
         with:
           channel: stable
 
-      - name: Download & Extract Uploaded Custom Code / ZIP File (If Uploaded)
+      - name: Clean & Prepare Assets Directory
         run: |
+          rm -rf builder/android_template/assets/www
           mkdir -p builder/android_template/assets/www
+
+      - name: Read & Process Uploaded User Code / ZIP File
+        run: |
           FILE_URL="${{ github.event.client_payload.file_url }}"
           
           if [ -n "$FILE_URL" ] && [ "$FILE_URL" != "null" ]; then
-            echo "[VEX ENGINE] Custom file uploaded by user. Downloading: $FILE_URL"
+            echo "[VEX ENGINE] Custom code file detected. Fetching: $FILE_URL"
             curl -s -L -o uploaded_source.zip "$FILE_URL" || true
             
-            # Check if file is ZIP archive or raw HTML
+            # Extract zip or convert single file into local index.html
             if file uploaded_source.zip | grep -q 'Zip archive'; then
-              echo "[VEX ENGINE] Extracting ZIP Archive into assets..."
+              echo "[VEX ENGINE] Unpacking user web project ZIP..."
               unzip -o uploaded_source.zip -d builder/android_template/assets/www/
             else
-              echo "[VEX ENGINE] Setting single uploaded file as index..."
+              echo "[VEX ENGINE] Single file detected. Setting as primary index..."
               cp uploaded_source.zip builder/android_template/assets/www/index.html
             fi
+            echo "HAS_FILE=true" >> $GITHUB_ENV
           else
-            echo "[VEX ENGINE] No custom file uploaded. Using Web URL mode."
+            echo "[VEX ENGINE] No custom file uploaded. Defaulting to Web URL mode."
+            echo "HAS_FILE=false" >> $GITHUB_ENV
           fi
 
       - name: Inject License & Multi-Res User Icons
@@ -73,64 +79,61 @@ jobs:
         run: |
           keytool -genkeypair -v \
             -keystore vex-key.jks \
-            -keyalg RSA \
-            -keysize 2048 \
-            -validity 10000 \
+            -storepass vexpassword123 \
             -alias vexkey \
-            -dname "CN=VexApp, OU=Software, O=Vex, L=City, S=State, C=US" \
-            -storepass "VexAppPass123" \
-            -keypass "VexAppPass123"
+            -keypass vexpassword123 \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -dname "CN=Vex Developer, OU=VexEngine, O=VexSoftware, L=Lahore, S=Punjab, C=PK"
 
-      - name: Fetch Flutter Dependencies
-        working-directory: builder/android_template
-        run: flutter pub get
-
-      - name: Compile Android Release Binary
+      - name: Build Android App Package (APK / AAB)
         working-directory: builder/android_template
         run: |
-          TARGET="${{ github.event.client_payload.platform || github.event.client_payload.targetPlatform }}"
           URL="${{ github.event.client_payload.app_url || github.event.client_payload.web_url }}"
-          NAME="${{ github.event.client_payload.app_name }}"
+          NAME="${{ github.event.client_payload.app_name || 'VexApp' }}"
           FILE_URL="${{ github.event.client_payload.file_url }}"
+          TARGET="${{ github.event.client_payload.platform || github.event.client_payload.targetPlatform || 'apk' }}"
 
-          if [ "$TARGET" = "aab" ]; then
-            flutter build appbundle --release --dart-define=WEB_URL="$URL" --dart-define=APP_NAME="$NAME" --dart-define=FILE_URL="$FILE_URL"
+          flutter pub get
+          
+          if [ "$TARGET" == "aab" ]; then
+            flutter build appbundle --release \
+              --dart-define=APP_NAME="$NAME" \
+              --dart-define=WEB_URL="$URL" \
+              --dart-define=FILE_URL="$FILE_URL" \
+              --dart-define=USE_LOCAL_FILE="${{ env.HAS_FILE }}"
           else
-            flutter build apk --release --dart-define=WEB_URL="$URL" --dart-define=APP_NAME="$NAME" --dart-define=FILE_URL="$FILE_URL"
+            flutter build apk --release \
+              --dart-define=APP_NAME="$NAME" \
+              --dart-define=WEB_URL="$URL" \
+              --dart-define=FILE_URL="$FILE_URL" \
+              --dart-define=USE_LOCAL_FILE="${{ env.HAS_FILE }}"
           fi
 
-      - name: Process & Format Output Name
+      - name: Push Android Build to VPS Server
         run: |
           RAW_NAME="${{ github.event.client_payload.app_name || 'VexApp' }}"
           SAFE_NAME=$(echo "$RAW_NAME" | sed 's/[^a-zA-Z0-9_-]/_/g')
-          TARGET="${{ github.event.client_payload.platform || github.event.client_payload.targetPlatform }}"
-
-          if [ "$TARGET" = "aab" ]; then
-            OUT_NAME="${SAFE_NAME}-playstore.aab"
-            cp builder/android_template/build/app/outputs/bundle/release/app-release.aab "./$OUT_NAME"
+          TARGET="${{ github.event.client_payload.platform || github.event.client_payload.targetPlatform || 'apk' }}"
+          
+          if [ "$TARGET" == "aab" ]; then
+            FILE_PATH="builder/android_template/build/app/outputs/bundle/release/app-release.aab"
+            OUTPUT_NAME="${SAFE_NAME}.aab"
           else
-            OUT_NAME="${SAFE_NAME}-release.apk"
-            cp builder/android_template/build/app/outputs/flutter-apk/app-release.apk "./$OUT_NAME"
+            FILE_PATH="builder/android_template/build/app/outputs/flutter-apk/app-release.apk"
+            OUTPUT_NAME="${SAFE_NAME}.apk"
           fi
-          echo "TARGET_FILE=$OUT_NAME" >> $GITHUB_ENV
-
-      - name: Push Compiled Binary to VPS Server
-        run: |
+          
           curl -X POST "http://104.251.123.179:1747/api/upload-build" \
-            -H "x-file-name: ${{ env.TARGET_FILE }}" \
-            --data-binary "@${{ env.TARGET_FILE }}"
+            -H "x-file-name: $OUTPUT_NAME" \
+            --data-binary "@$FILE_PATH"
 
   # =============================================================
-  # 2. WINDOWS ENGINE (EXE & WINDOWS STORE INSTALLER)
+  # 2. WINDOWS ENGINE (DESKTOP .EXE)
   # =============================================================
   build-windows:
     if: |
-      github.event.client_payload.platform == 'windows' || 
       github.event.client_payload.platform == 'exe' || 
-      github.event.client_payload.platform == 'msix' ||
-      github.event.client_payload.targetPlatform == 'windows' || 
-      github.event.client_payload.targetPlatform == 'exe' ||
-      github.event.client_payload.targetPlatform == 'msix'
+      github.event.client_payload.targetPlatform == 'exe'
     runs-on: windows-latest
 
     steps:
@@ -142,25 +145,31 @@ jobs:
         with:
           channel: stable
 
-      - name: Enable Windows Desktop Support
-        run: flutter config --enable-windows-desktop
-
-      - name: Inject Missing Windows Runner Files
-        working-directory: builder/android_template
-        run: flutter create --platforms=windows .
-
-      - name: Fetch & Process Custom Windows Icon
+      - name: Clean & Prepare Assets Directory
         shell: powershell
         run: |
-          choco install imagemagick -y
-          Invoke-WebRequest -Uri "http://104.251.123.179:1747/user_icon.png" -OutFile "user_icon.png" -ErrorAction SilentlyContinue
-          if (Test-Path "user_icon.png") {
-            magick convert user_icon.png -define icon:auto-resize="256,128,64,48,32,16" builder/android_template/windows/runner/resources/app_icon.ico
-          }
+          Remove-Item -Recurse -Force -ErrorAction SilentlyContinue "builder\android_template\assets\www"
+          New-Item -ItemType Directory -Force -Path "builder\android_template\assets\www"
 
-      - name: Fetch Flutter Dependencies
-        working-directory: builder/android_template
-        run: flutter pub get
+      - name: Read & Process Uploaded User Code / ZIP File
+        shell: powershell
+        run: |
+          $fileUrl = "${{ github.event.client_payload.file_url }}"
+          
+          if (![string]::IsNullOrWhiteSpace($fileUrl) -and $fileUrl -ne "null") {
+            Write-Host "[VEX ENGINE] Downloading user asset from: $fileUrl"
+            Invoke-WebRequest -Uri $fileUrl -OutFile "uploaded_source.zip"
+            
+            # Try unpacking archive or copy as index.html
+            try {
+              Expand-Archive -Path "uploaded_source.zip" -DestinationPath "builder\android_template\assets\www" -Force
+            } catch {
+              Copy-Item -Path "uploaded_source.zip" -Destination "builder\android_template\assets\www\index.html" -Force
+            }
+            echo "HAS_FILE=true" >> $env:GITHUB_ENV
+          } else {
+            echo "HAS_FILE=false" >> $env:GITHUB_ENV
+          }
 
       - name: Build Windows Executable
         working-directory: builder/android_template
@@ -171,7 +180,8 @@ jobs:
           $url = "${{ github.event.client_payload.app_url || github.event.client_payload.web_url }}"
           $name = "${{ github.event.client_payload.app_name }}"
           $fileUrl = "${{ github.event.client_payload.file_url }}"
-          flutter build windows --release --dart-define=WEB_URL="$url" --dart-define=APP_NAME="$name" --dart-define=FILE_URL="$fileUrl"
+          flutter pub get
+          flutter build windows --release --dart-define=WEB_URL="$url" --dart-define=APP_NAME="$name" --dart-define=FILE_URL="$fileUrl" --dart-define=USE_LOCAL_FILE="${{ env.HAS_FILE }}"
 
       - name: Generate Certificate & Build Windows Installer (.EXE)
         shell: powershell
@@ -244,6 +254,27 @@ jobs:
         with:
           channel: stable
 
+      - name: Clean & Prepare Assets Directory
+        run: |
+          rm -rf builder/android_template/assets/www
+          mkdir -p builder/android_template/assets/www
+
+      - name: Read & Process Uploaded User Code / ZIP File
+        run: |
+          FILE_URL="${{ github.event.client_payload.file_url }}"
+          if [ -n "$FILE_URL" ] && [ "$FILE_URL" != "null" ]; then
+            echo "[VEX ENGINE] Downloading user asset for iOS..."
+            curl -s -L -o uploaded_source.zip "$FILE_URL"
+            if file uploaded_source.zip | grep -q 'Zip archive'; then
+              unzip -o uploaded_source.zip -d builder/android_template/assets/www/
+            else
+              cp uploaded_source.zip builder/android_template/assets/www/index.html
+            fi
+            echo "HAS_FILE=true" >> $GITHUB_ENV
+          else
+            echo "HAS_FILE=false" >> $GITHUB_ENV
+          fi
+
       - name: Fetch Dependencies
         working-directory: builder/android_template
         run: flutter pub get
@@ -254,7 +285,11 @@ jobs:
           URL="${{ github.event.client_payload.app_url || github.event.client_payload.web_url }}"
           NAME="${{ github.event.client_payload.app_name }}"
           FILE_URL="${{ github.event.client_payload.file_url }}"
-          flutter build ios --release --no-codesign --dart-define=WEB_URL="$URL" --dart-define=APP_NAME="$NAME" --dart-define=FILE_URL="$FILE_URL"
+          flutter build ios --release --no-codesign \
+            --dart-define=WEB_URL="$URL" \
+            --dart-define=APP_NAME="$NAME" \
+            --dart-define=FILE_URL="$FILE_URL" \
+            --dart-define=USE_LOCAL_FILE="${{ env.HAS_FILE }}"
           
           RAW_NAME="${{ github.event.client_payload.app_name || 'VexApp' }}"
           SAFE_NAME=$(echo "$RAW_NAME" | sed 's/[^a-zA-Z0-9_-]/_/g')
