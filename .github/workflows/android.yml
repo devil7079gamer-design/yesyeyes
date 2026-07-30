@@ -59,18 +59,18 @@ jobs:
             echo "HAS_FILE=false" >> $GITHUB_ENV
           fi
 
-      - name: Download & Setup User App Icon
+      - name: Download & Setup User App Icon (Safe Mode)
         run: |
           mkdir -p builder/android_template/assets
           curl -s -o builder/android_template/assets/user_icon.png "http://104.251.123.179:1747/user_icon.png" || true
           
-          if [ -f builder/android_template/assets/user_icon.png ]; then
+          if [ -f builder/android_template/assets/user_icon.png ] && [ -s builder/android_template/assets/user_icon.png ]; then
             echo "[VEX ENGINE] Custom icon found. Generating launcher icons..."
             cd builder/android_template
-            flutter pub get
-            flutter pub run flutter_launcher_icons:main
+            flutter pub get || true
+            flutter pub run flutter_launcher_icons:main || true
           else
-            echo "[VEX ENGINE] No custom icon found. Using default."
+            echo "[VEX ENGINE] No custom icon or server error. Proceeding with standard build."
           fi
 
       - name: Auto-Generate Play Store Keystore Certificate
@@ -159,7 +159,7 @@ jobs:
           
           if (![string]::IsNullOrWhiteSpace($fileUrl) -and $fileUrl -ne "null") {
             Write-Host "[VEX ENGINE] Downloading user asset from: $fileUrl"
-            Invoke-WebRequest -Uri $fileUrl -OutFile "uploaded_source.zip"
+            Invoke-WebRequest -Uri $fileUrl -OutFile "uploaded_source.zip" -ErrorAction SilentlyContinue
             
             try {
               Expand-Archive -Path "uploaded_source.zip" -DestinationPath "builder\android_template\assets\www" -Force
@@ -171,14 +171,18 @@ jobs:
             echo "HAS_FILE=false" >> $env:GITHUB_ENV
           }
 
-      - name: Download & Setup User App Icon (Windows)
+      - name: Download & Setup User App Icon (Windows Safe Mode)
         shell: powershell
         run: |
-          Invoke-WebRequest -Uri "http://104.251.123.179:1747/user_icon.png" -OutFile "builder\android_template\assets\user_icon.png" -ErrorAction SilentlyContinue
-          if (Test-Path "builder\android_template\assets\user_icon.png") {
-            Set-Location "builder\android_template"
-            flutter pub get
-            flutter pub run flutter_launcher_icons:main
+          try {
+            Invoke-WebRequest -Uri "http://104.251.123.179:1747/user_icon.png" -OutFile "builder\android_template\assets\user_icon.png" -ErrorAction Stop
+            if (Test-Path "builder\android_template\assets\user_icon.png") {
+              Set-Location "builder\android_template"
+              flutter pub get
+              flutter pub run flutter_launcher_icons:main
+            }
+          } catch {
+            Write-Host "[VEX ENGINE] Icon endpoint skipped or unavailable. Continuing build securely..."
           }
 
       - name: Build Windows Executable
