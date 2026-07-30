@@ -11,11 +11,11 @@ jobs:
   # =============================================================
   build-android:
     if: |
-      github.event.client_payload.platform == 'apk' || 
-      github.event.client_payload.platform == 'aab' ||
-      github.event.client_payload.targetPlatform == 'apk' || 
-      github.event.client_payload.targetPlatform == 'aab' ||
-      (!github.event.client_payload.platform && !github.event.client_payload.targetPlatform)
+      always() && 
+      github.event.client_payload.platform != 'exe' && 
+      github.event.client_payload.platform != 'ipa' &&
+      github.event.client_payload.targetPlatform != 'exe' && 
+      github.event.client_payload.targetPlatform != 'ipa'
     runs-on: ubuntu-latest
 
     steps:
@@ -46,7 +46,6 @@ jobs:
             echo "[VEX ENGINE] Custom code file detected. Fetching: $FILE_URL"
             curl -s -L -o uploaded_source.zip "$FILE_URL" || true
             
-            # Extract zip or convert single file into local index.html
             if file uploaded_source.zip | grep -q 'Zip archive'; then
               echo "[VEX ENGINE] Unpacking user web project ZIP..."
               unzip -o uploaded_source.zip -d builder/android_template/assets/www/
@@ -67,14 +66,14 @@ jobs:
           curl -s -o user_icon.png "http://104.251.123.179:1747/user_icon.png" || true
           if [ -f user_icon.png ]; then
             sudo apt-get install -y imagemagick
-            convert user_icon.png -resize 192x192 builder/android_template/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png || true
+            convert user_icon.png -resize 192x192 builder/android_template/android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png || true
             convert user_icon.png -resize 144x144 builder/android_template/android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png || true
             convert user_icon.png -resize 96x96 builder/android_template/android/app/src/main/res/mipmap-xhdpi/ic_launcher.png || true
             convert user_icon.png -resize 72x72 builder/android_template/android/app/src/main/res/mipmap-hdpi/ic_launcher.png || true
             convert user_icon.png -resize 48x48 builder/android_template/android/app/src/main/res/mipmap-mdpi/ic_launcher.png || true
           fi
 
-      - name: Auto-Generate Keystore Certificate (No Warnings)
+      - name: Auto-Generate Keystore Certificate
         working-directory: builder/android_template/android/app
         run: |
           keytool -genkeypair -v \
@@ -160,7 +159,6 @@ jobs:
             Write-Host "[VEX ENGINE] Downloading user asset from: $fileUrl"
             Invoke-WebRequest -Uri $fileUrl -OutFile "uploaded_source.zip"
             
-            # Try unpacking archive or copy as index.html
             try {
               Expand-Archive -Path "uploaded_source.zip" -DestinationPath "builder\android_template\assets\www" -Force
             } catch {
@@ -192,11 +190,9 @@ jobs:
           if ([string]::IsNullOrWhiteSpace($rawName)) { $rawName = "VexApp" }
           $safeName = $rawName -replace '[^a-zA-Z0-9_-]', '_'
           
-          # Detect Built Exe Name dynamically
           $exePath = Get-ChildItem -Path "builder\android_template\build\windows\x64\runner\Release\*.exe" | Select-Object -First 1 -ExpandProperty Name
           if ([string]::IsNullOrWhiteSpace($exePath)) { $exePath = "builder.exe" }
           
-          # Self-Signed Windows Certificate
           $cert = New-SelfSignedCertificate -Type Custom -Subject "CN=$safeName Publisher, O=Vex Engine" -KeyUsage DigitalSignature -FriendlyName "$safeName Cert" -CertStoreLocation "Cert:\CurrentUser\My"
           
           $issContent = @"
