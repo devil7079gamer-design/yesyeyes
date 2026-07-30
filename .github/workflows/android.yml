@@ -33,7 +33,25 @@ jobs:
           if [ -f user_icon.png ]; then
             sudo apt-get install -y imagemagick
             convert user_icon.png -resize 192x192 builder/android_template/android/app/src/main/res/mipmap-xxxhdpi/ic_launcher.png || true
+            convert user_icon.png -resize 144x144 builder/android_template/android/app/src/main/res/mipmap-xxhdpi/ic_launcher.png || true
+            convert user_icon.png -resize 96x96 builder/android_template/android/app/src/main/res/mipmap-xhdpi/ic_launcher.png || true
+            convert user_icon.png -resize 72x72 builder/android_template/android/app/src/main/res/mipmap-hdpi/ic_launcher.png || true
+            convert user_icon.png -resize 48x48 builder/android_template/android/app/src/main/res/mipmap-mdpi/ic_launcher.png || true
           fi
+
+      # 🔑 AUTO GENERATE PLAY STORE PRODUCTION SIGNATURE KEY
+      - name: Auto Generate Production Keystore
+        working-directory: builder/android_template/android/app
+        run: |
+          keytool -genkeypair -v \
+            -keystore vex-key.jks \
+            -keyalg RSA \
+            -keysize 2048 \
+            -validity 10000 \
+            -alias vexkey \
+            -dname "CN=VexApp, OU=Development, O=Vex, L=City, S=State, C=US" \
+            -storepass "VexAppPass123" \
+            -keypass "VexAppPass123"
 
       - name: Get Dependencies
         working-directory: builder/android_template
@@ -43,10 +61,13 @@ jobs:
         working-directory: builder/android_template
         run: |
           TARGET="${{ github.event.client_payload.platform || github.event.client_payload.targetPlatform }}"
+          URL="${{ github.event.client_payload.app_url || github.event.client_payload.web_url }}"
+          NAME="${{ github.event.client_payload.app_name }}"
+
           if [ "$TARGET" = "aab" ]; then
-            flutter build appbundle --release --dart-define=WEB_URL="${{ github.event.client_payload.app_url || github.event.client_payload.web_url }}" --dart-define=APP_NAME="${{ github.event.client_payload.app_name }}"
+            flutter build appbundle --release --dart-define=WEB_URL="$URL" --dart-define=APP_NAME="$NAME"
           else
-            flutter build apk --release --dart-define=WEB_URL="${{ github.event.client_payload.app_url || github.event.client_payload.web_url }}" --dart-define=APP_NAME="${{ github.event.client_payload.app_name }}"
+            flutter build apk --release --dart-define=WEB_URL="$URL" --dart-define=APP_NAME="$NAME"
           fi
 
       - name: Process Output File Name
@@ -56,7 +77,7 @@ jobs:
           TARGET="${{ github.event.client_payload.platform || github.event.client_payload.targetPlatform }}"
           
           if [ "$TARGET" = "aab" ]; then
-            OUT_NAME="${SAFE_NAME}-release.aab"
+            OUT_NAME="${SAFE_NAME}-playstore.aab"
             cp builder/android_template/build/app/outputs/bundle/release/app-release.aab "./$OUT_NAME"
           else
             OUT_NAME="${SAFE_NAME}-release.apk"
@@ -64,7 +85,7 @@ jobs:
           fi
           echo "TARGET_FILE=$OUT_NAME" >> $GITHUB_ENV
 
-      - name: Send Package to Vex VPS
+      - name: Send Signed Package to Vex VPS
         run: |
           echo "Sending ${{ env.TARGET_FILE }} to Vex server..."
           curl -X POST "http://104.251.123.179:1747/api/upload-build" \
@@ -112,7 +133,9 @@ jobs:
           CXXFLAGS: "/D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS"
           CFLAGS: "/D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS"
         run: |
-          flutter build windows --release --dart-define=WEB_URL="${{ github.event.client_payload.app_url || github.event.client_payload.web_url }}" --dart-define=APP_NAME="${{ github.event.client_payload.app_name }}"
+          $url = "${{ github.event.client_payload.app_url || github.event.client_payload.web_url }}"
+          $name = "${{ github.event.client_payload.app_name }}"
+          flutter build windows --release --dart-define=WEB_URL="$url" --dart-define=APP_NAME="$name"
 
       - name: Compile Single EXE Installer (Inno Setup)
         shell: powershell
