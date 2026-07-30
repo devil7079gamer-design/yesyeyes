@@ -10,6 +10,13 @@ jobs:
   # JOB 1: BUILD ANDROID (APK & Play Store AAB)
   # =============================================================
   build-android:
+    # 🎯 Trigger ONLY when target is apk, aab, or empty/default
+    if: |
+      github.event.client_payload.platform == 'apk' || 
+      github.event.client_payload.platform == 'aab' || 
+      github.event.client_payload.targetPlatform == 'apk' || 
+      github.event.client_payload.targetPlatform == 'aab' || 
+      (!github.event.client_payload.platform && !github.event.client_payload.targetPlatform)
     runs-on: ubuntu-latest
 
     steps:
@@ -39,7 +46,6 @@ jobs:
             convert user_icon.png -resize 48x48 builder/android_template/android/app/src/main/res/mipmap-mdpi/ic_launcher.png || true
           fi
 
-      # 🔑 AUTO GENERATE PLAY STORE PRODUCTION SIGNATURE KEY
       - name: Auto Generate Production Keystore
         working-directory: builder/android_template/android/app
         run: |
@@ -96,6 +102,12 @@ jobs:
   # JOB 2: BUILD WINDOWS SINGLE EXE INSTALLER
   # =============================================================
   build-windows:
+    # 🎯 Trigger ONLY when target is windows / exe
+    if: |
+      github.event.client_payload.platform == 'windows' || 
+      github.event.client_payload.platform == 'exe' || 
+      github.event.client_payload.targetPlatform == 'windows' || 
+      github.event.client_payload.targetPlatform == 'exe'
     runs-on: windows-latest
 
     steps:
