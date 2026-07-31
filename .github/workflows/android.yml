@@ -1,341 +1,348 @@
-name: Vex Multi-Platform Universal Engine
+ILE }}"name: Vex Multi-Platform Universal Engine
 
 on:
-  repository_dispatch:
-    types: [trigger-build, build-app]
-  workflow_dispatch:
+  repository_dispatch:
+    types: [trigger-build, build-app]
+  workflow_dispatch:
 
 jobs:
-  # =============================================================
-  # 1. ANDROID ENGINE (Direct .APK & Play Store .AAB)
-  # =============================================================
-  build-android:
-    if: |
-      github.event.client_payload.platform == 'apk' || 
-      github.event.client_payload.platform == 'aab' ||
-      github.event.client_payload.platform == 'android' ||
-      github.event.client_payload.targetPlatform == 'apk' || 
-      github.event.client_payload.targetPlatform == 'aab' ||
-      (!github.event.client_payload.platform && !github.event.client_payload.targetPlatform)
-    runs-on: ubuntu-latest
+  # =============================================================
+  # 1. ANDROID ENGINE (APK & Play Store .AAB)
+  # =============================================================
+  build-android:
+    if: |
+      github.event.client_payload.platform == 'apk' || 
+      github.event.client_payload.platform == 'aab' ||
+      github.event.client_payload.targetPlatform == 'apk' || 
+      github.event.client_payload.targetPlatform == 'aab' ||
+      (!github.event.client_payload.platform && !github.event.client_payload.targetPlatform)
+    runs-on: ubuntu-latest
 
-    steps:
-      - name: Checkout Code Repository
-        uses: actions/checkout@v4
+    steps:
+      - name: Checkout Code Repository
+        uses: actions/checkout@v4
 
-      - name: Setup Java JDK 17
-        uses: actions/setup-java@v4
-        with:
-          distribution: temurin
-          java-version: "17"
+      - name: Setup Java JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
 
-      - name: Setup Flutter Framework
-        uses: subosito/flutter-action@v2
-        with:
-          channel: stable
+      - name: Setup Flutter Framework
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
 
-      - name: Clean & Prepare Assets Directory
-        run: |
-          rm -rf builder/android_template/assets/www
-          mkdir -p builder/android_template/assets/www
+      - name: Clean & Prepare Assets Directory
+        run: |
+          rm -rf builder/android_template/assets/www
+          mkdir -p builder/android_template/assets/www
 
-      - name: Read & Process Uploaded User Code / ZIP / Website URL
-        run: |
-          FILE_URL="${{ github.event.client_payload.file_url }}"
-          DIST_FOLDER="${{ github.event.client_payload.dist_folder }}"
-          ROOT_FOLDER="${{ github.event.client_payload.root_folder }}"
-          IS_NESTED="${{ github.event.client_payload.is_nested }}"
-          
-          if [ -n "$FILE_URL" ] && [ "$FILE_URL" != "null" ]; then
-            echo "[VEX ENGINE] Fetching user package from: $FILE_URL"
-            curl -s -L -o uploaded_source.zip "$FILE_URL" || true
-            
-            if file uploaded_source.zip | grep -q 'Zip archive'; then
-              echo "[VEX ENGINE] Unpacking archive..."
-              mkdir -p temp_extracted_zip
-              unzip -o uploaded_source.zip -d temp_extracted_zip/
-              
-              TARGET_DIR="temp_extracted_zip"
-              if [ "$IS_NESTED" == "true" ] && [ -n "$ROOT_FOLDER" ]; then
-                TARGET_DIR="temp_extracted_zip/$ROOT_FOLDER"
-              fi
-              
-              if [ -n "$DIST_FOLDER" ] && [ -d "$TARGET_DIR/$DIST_FOLDER" ]; then
-                TARGET_DIR="$TARGET_DIR/$DIST_FOLDER"
-              fi
-              
-              cp -r $TARGET_DIR/* builder/android_template/assets/www/
-              rm -rf temp_extracted_zip
-            else
-              echo "[VEX ENGINE] Single HTML file detected."
-              cp uploaded_source.zip builder/android_template/assets/www/index.html
-            fi
-            echo "HAS_FILE=true" >> $GITHUB_ENV
-          else
-            echo "[VEX ENGINE] Web URL Mode Active."
-            echo "HAS_FILE=false" >> $GITHUB_ENV
-          fi
+      - name: Read & Process Uploaded User Code / ZIP File
+        run: |
+          FILE_URL="${{ github.event.client_payload.file_url }}"
+          
+          if [ -n "$FILE_URL" ] && [ "$FILE_URL" != "null" ]; then
+            echo "[VEX ENGINE] Custom code file detected. Fetching: $FILE_URL"
+            curl -s -L -o uploaded_source.zip "$FILE_URL" || true
+            
+            if file uploaded_source.zip | grep -q 'Zip archive'; then
+              echo "[VEX ENGINE] Unpacking user web project ZIP..."
+              unzip -o uploaded_source.zip -d builder/android_template/assets/www/
+            else
+              echo "[VEX ENGINE] Single file detected. Setting as primary index..."
+              cp uploaded_source.zip builder/android_template/assets/www/index.html
+            fi
+            echo "HAS_FILE=true" >> $GITHUB_ENV
+          else
+            echo "[VEX ENGINE] No custom file uploaded. Defaulting to Web URL mode."
+            echo "HAS_FILE=false" >> $GITHUB_ENV
+          fi
 
-      - name: Generate Permanent Vex Signing Keystore
-        run: |
-          mkdir -p builder/android_template/android/app
-          rm -f builder/android_template/android/app/vex-key.jks
-          keytool -genkey -v -keystore builder/android_template/android/app/vex-key.jks \
-            -storepass vexpassword123 -keypass vexpassword123 -alias vexkey -keyalg RSA -keysize 2048 -validity 10000 \
-            -dname "CN=VexApp, OU=VexEngine, O=Vex, L=City, S=State, C=US"
+      - name: Download & Setup User App Icon (Safe Mode)
+        run: |
+          mkdir -p builder/android_template/assets
+          curl -s -o builder/android_template/assets/user_icon.png "http://104.251.123.179:1747/user_icon.png" || true
+          
+          if [ -f builder/android_template/assets/user_icon.png ] && [ -s builder/android_template/assets/user_icon.png ]; then
+            echo "[VEX ENGINE] Custom icon found. Generating launcher icons..."
+            cd builder/android_template
+            flutter pub get || true
+            flutter pub run flutter_launcher_icons:main || true
+          else
+            echo "[VEX ENGINE] No custom icon or server error. Proceeding with standard build."
+          fi
 
-      - name: Build Android Packages (.APK and .AAB)
-        working-directory: builder/android_template
-        run: |
-          URL="${{ github.event.client_payload.app_url || github.event.client_payload.web_url }}"
-          NAME="${{ github.event.client_payload.app_name || 'VexApp' }}"
-          FILE_URL="${{ github.event.client_payload.file_url }}"
-          ENTRY_PATH="${{ github.event.client_payload.entry_path || 'index.html' }}"
-          PLATFORM="${{ github.event.client_payload.platform || github.event.client_payload.targetPlatform || 'apk' }}"
-          SAFE_NAME=$(echo "$NAME" | sed 's/[^a-zA-Z0-9_-]/_/g')
-          
-          flutter pub get
-          
-          if [ "$PLATFORM" == "aab" ]; then
-            echo "[VEX ENGINE] Compiling Google Play Store Bundle (.AAB)..."
-            flutter build appbundle --release \
-              --dart-define=WEB_URL="$URL" \
-              --dart-define=APP_NAME="$NAME" \
-              --dart-define=FILE_URL="$FILE_URL" \
-              --dart-define=ENTRY_PATH="$ENTRY_PATH" \
-              --dart-define=USE_LOCAL_FILE="${{ env.HAS_FILE }}"
-            
-            mv build/app/outputs/bundle/release/app-release.aab "${SAFE_NAME}.aab"
-            echo "FINAL_FILE=${SAFE_NAME}.aab" >> $GITHUB_ENV
-            echo "FILE_PATH=builder/android_template/${SAFE_NAME}.aab" >> $GITHUB_ENV
-          else
-            echo "[VEX ENGINE] Compiling Direct Mobile App (.APK)..."
-            flutter build apk --release \
-              --dart-define=WEB_URL="$URL" \
-              --dart-define=APP_NAME="$NAME" \
-              --dart-define=FILE_URL="$FILE_URL" \
-              --dart-define=ENTRY_PATH="$ENTRY_PATH" \
-              --dart-define=USE_LOCAL_FILE="${{ env.HAS_FILE }}"
-            
-            mv build/app/outputs/flutter-apk/app-release.apk "${SAFE_NAME}.apk"
-            echo "FINAL_FILE=${SAFE_NAME}.apk" >> $GITHUB_ENV
-            echo "FILE_PATH=builder/android_template/${SAFE_NAME}.apk" >> $GITHUB_ENV
-          fi
+      - name: Auto-Generate Play Store Keystore Certificate
+        working-directory: builder/android_template/android/app
+        run: |
+          keytool -genkeypair -v \
+            -keystore vex-key.jks \
+            -storepass vexpassword123 \
+            -alias vexkey \
+            -keypass vexpassword123 \
+            -keyalg RSA -keysize 2048 -validity 10000 \
+            -dname "CN=Vex Developer, OU=VexEngine, O=VexSoftware, L=Lahore, S=Punjab, C=PK"
 
-      - name: Push Android Binary Direct to Express Server
-        run: |
-          echo "[VEX ENGINE] Sending ${{ env.FINAL_FILE }} to Express Server..."
-          curl -X POST "http://104.251.123.179:1747/api/upload-build" \
-            -H "x-file-name: ${{ env.FINAL_FILE }}" \
-            --data-binary "@${{ env.FILE_PATH }}"
+      - name: Build Android App Package (APK / Play Store AAB)
+        working-directory: builder/android_template
+        run: |
+          URL="${{ github.event.client_payload.app_url || github.event.client_payload.web_url }}"
+          NAME="${{ github.event.client_payload.app_name || 'VexApp' }}"
+          FILE_URL="${{ github.event.client_payload.file_url }}"
+          TARGET="${{ github.event.client_payload.platform || github.event.client_payload.targetPlatform || 'apk' }}"
 
-      - name: Backup Android Artifact to GitHub Actions
-        uses: actions/upload-artifact@v4
-        with:
-          name: VexApp-Android-Build
-          path: "builder/android_template/*.*"
-          if-no-files-found: warn
+          flutter pub get
+          
+          if [ "$TARGET" == "aab" ]; then
+            flutter build appbundle --release \
+              --dart-define=APP_NAME="$NAME" \
+              --dart-define=WEB_URL="$URL" \
+              --dart-define=FILE_URL="$FILE_URL" \
+              --dart-define=USE_LOCAL_FILE="${{ env.HAS_FILE }}"
+          else
+            flutter build apk --release \
+              --dart-define=APP_NAME="$NAME" \
+              --dart-define=WEB_URL="$URL" \
+              --dart-define=FILE_URL="$FILE_URL" \
+              --dart-define=USE_LOCAL_FILE="${{ env.HAS_FILE }}"
+          fi
 
-  # =============================================================
-  # 2. WINDOWS ENGINE (Direct .EXE Executable & Setup Installer)
-  # =============================================================
-  build-windows:
-    if: |
-      github.event.client_payload.platform == 'windows' || 
-      github.event.client_payload.targetPlatform == 'windows' ||
-      github.event.client_payload.platform == 'exe'
-    runs-on: windows-latest
+      - name: Push Android Build to VPS Server
+        run: |
+          RAW_NAME="${{ github.event.client_payload.app_name || 'VexApp' }}"
+          SAFE_NAME=$(echo "$RAW_NAME" | sed 's/[^a-zA-Z0-9_-]/_/g')
+          TARGET="${{ github.event.client_payload.platform || github.event.client_payload.targetPlatform || 'apk' }}"
+          
+          if [ "$TARGET" == "aab" ]; then
+            FILE_PATH="builder/android_template/build/app/outputs/bundle/release/app-release.aab"
+            OUTPUT_NAME="${SAFE_NAME}.aab"
+          else
+            FILE_PATH="builder/android_template/build/app/outputs/flutter-apk/app-release.apk"
+            OUTPUT_NAME="${SAFE_NAME}.apk"
+          fi
+          
+          curl -X POST "http://104.251.123.179:1747/api/upload-build" \
+            -H "x-file-name: $OUTPUT_NAME" \
+            --data-binary "@$FILE_PATH"
 
-    steps:
-      - name: Checkout Code Repository
-        uses: actions/checkout@v4
+      - name: Upload Android Artifacts to GitHub
+        uses: actions/upload-artifact@v4
+        with:
+          name: VexApp-Android-Build
+          path: |
+            builder/android_template/build/app/outputs/flutter-apk/*.apk
+            builder/android_template/build/app/outputs/bundle/release/*.aab
+          if-no-files-found: warn
 
-      - name: Setup Flutter Framework
-        uses: subosito/flutter-action@v2
-        with:
-          channel: stable
+  # =============================================================
+  # 2. WINDOWS ENGINE (DESKTOP .EXE INSTALLER)
+  # =============================================================
+  build-windows:
+    if: |
+      github.event.client_payload.platform == 'exe' || 
+      github.event.client_payload.targetPlatform == 'exe' ||
+      github.event.client_payload.platform == 'windows' || 
+      github.event.client_payload.targetPlatform == 'windows'
+    runs-on: windows-latest
 
-      - name: Install Inno Setup Installer Compiler
-        shell: pwsh
-        run: |
-          choco install innosetup -y --no-progress
+    steps:
+      - name: Checkout Code Repository
+        uses: actions/checkout@v4
 
-      - name: Clean & Prepare Assets Directory
-        shell: bash
-        run: |
-          rm -rf builder/android_template/assets/www
-          mkdir -p builder/android_template/assets/www
+      - name: Setup Flutter Framework
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
 
-      - name: Read & Process Uploaded User Code / ZIP File
-        shell: bash
-        run: |
-          FILE_URL="${{ github.event.client_payload.file_url }}"
-          if [ -n "$FILE_URL" ] && [ "$FILE_URL" != "null" ]; then
-            echo "[VEX ENGINE] Fetching Windows Source Code..."
-            curl -s -L -o uploaded_source.zip "$FILE_URL"
-            if file uploaded_source.zip | grep -q 'Zip archive'; then
-              unzip -o uploaded_source.zip -d builder/android_template/assets/www/
-            else
-              cp uploaded_source.zip builder/android_template/assets/www/index.html
-            fi
-            echo "HAS_FILE=true" >> $GITHUB_ENV
-          else
-            echo "HAS_FILE=false" >> $GITHUB_ENV
-          fi
+      - name: Clean & Prepare Assets Directory
+        shell: powershell
+        run: |
+          Remove-Item -Recurse -Force -ErrorAction SilentlyContinue "builder\android_template\assets\www"
+          New-Item -ItemType Directory -Force -Path "builder\android_template\assets\www"
 
-      - name: Compile Windows Native Binary & Build Setup Installer (.EXE)
-        working-directory: builder/android_template
-        shell: pwsh
-        run: |
-          $url = "${{ github.event.client_payload.app_url || github.event.client_payload.web_url }}"
-          $rawName = "${{ github.event.client_payload.app_name || 'VexApp' }}"
-          $fileUrl = "${{ github.event.client_payload.file_url }}"
-          $entryPath = "${{ github.event.client_payload.entry_path || 'index.html' }}"
-          $safeName = $rawName -replace '[^a-zA-Z0-9_-]', '_'
-          
-          flutter config --enable-windows-desktop
-          flutter pub get
-          
-          echo "[VEX ENGINE] Compiling Windows Native Application..."
-          flutter build windows --release `
-            --dart-define=WEB_URL="$url" `
-            --dart-define=APP_NAME="$rawName" `
-            --dart-define=FILE_URL="$fileUrl" `
-            --dart-define=ENTRY_PATH="$entryPath" `
-            --dart-define=USE_LOCAL_FILE="${{ env.HAS_FILE }}"
-          
-          $releaseDir = Resolve-Path "build/windows/x64/runner/Release"
-          $exePath = "$releaseDir\android_template.exe"
-          
-          if (Test-Path $exePath) {
-              Rename-Item -Path $exePath -NewName "$safeName.exe"
-          }
-          
-          $issContent = @"
-          [Setup]
-          AppName=$rawName
-          AppVersion=1.0.0
-          DefaultDirName={autopf}\$safeName
-          DefaultGroupName=$rawName
-          UninstallDisplayIcon={app}\$safeName.exe
-          Compression=lzma2
-          SolidCompression=yes
-          OutputDir=.
-          OutputBaseFilename=$safeName-Setup
-          
-          [Files]
-          Source: "$releaseDir\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
-          
-          [Icons]
-          Name: "{autoprograms}\$rawName"; Filename: "{app}\$safeName.exe"
-          Name: "{commondesktop}\$rawName"; Filename: "{app}\$safeName.exe"
-          
-          [Run]
-          Filename: "{app}\$safeName.exe"; Description: "Launch $rawName"; Flags: nowait postinstall skipifsilent
-          "@
-          
-          Set-Content -Path "installer.iss" -Value $issContent
-          
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
-          
-          echo "SAFE_NAME=$safeName" >> $env:GITHUB_ENV
+      - name: Read & Process Uploaded User Code / ZIP File
+        shell: powershell
+        run: |
+          $fileUrl = "${{ github.event.client_payload.file_url }}"
+          
+          if (![string]::IsNullOrWhiteSpace($fileUrl) -and $fileUrl -ne "null") {
+            Write-Host "[VEX ENGINE] Downloading user asset from: $fileUrl"
+            Invoke-WebRequest -Uri $fileUrl -OutFile "uploaded_source.zip" -ErrorAction SilentlyContinue
+            
+            try {
+              Expand-Archive -Path "uploaded_source.zip" -DestinationPath "builder\android_template\assets\www" -Force
+            } catch {
+              Copy-Item -Path "uploaded_source.zip" -Destination "builder\android_template\assets\www\index.html" -Force
+            }
+            echo "HAS_FILE=true" >> $env:GITHUB_ENV
+          } else {
+            echo "HAS_FILE=false" >> $env:GITHUB_ENV
+          }
 
-      - name: Push Windows Setup Installer (.EXE) to Express Server
-        shell: bash
-        run: |
-          RAW_NAME="${{ github.event.client_payload.app_name || 'VexApp' }}"
-          SAFE_NAME=$(echo "$RAW_NAME" | sed 's/[^a-zA-Z0-9_-]/_/g')
-          EXE_NAME="${SAFE_NAME}-Setup.exe"
-          
-          echo "[VEX ENGINE] Uploading $EXE_NAME to Express Server..."
-          curl -X POST "http://104.251.123.179:1747/api/upload-build" \
-            -H "x-file-name: $EXE_NAME" \
-            --data-binary "@builder/android_template/$EXE_NAME"
+      - name: Download & Setup User App Icon (Windows Safe Mode)
+        shell: powershell
+        run: |
+          try {
+            Invoke-WebRequest -Uri "http://104.251.123.179:1747/user_icon.png" -OutFile "builder\android_template\assets\user_icon.png" -ErrorAction Stop
+            if (Test-Path "builder\android_template\assets\user_icon.png") {
+              Set-Location "builder\android_template"
+              flutter pub get
+              flutter pub run flutter_launcher_icons:main
+            }
+          } catch {
+            Write-Host "[VEX ENGINE] Icon endpoint skipped or unavailable. Continuing build securely..."
+          }
 
-      - name: Backup Windows Artifact to GitHub Actions
-        uses: actions/upload-artifact@v4
-        with:
-          name: VexApp-Windows-Build
-          path: "builder/android_template/*-Setup.exe"
-          if-no-files-found: warn
+      - name: Build Windows Executable
+        working-directory: builder/android_template
+        env:
+          CXXFLAGS: "/D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS"
+          CFLAGS: "/D_SILENCE_EXPERIMENTAL_COROUTINE_DEPRECATION_WARNINGS"
+        run: |
+          $url = "${{ github.event.client_payload.app_url || github.event.client_payload.web_url }}"
+          $name = "${{ github.event.client_payload.app_name }}"
+          $fileUrl = "${{ github.event.client_payload.file_url }}"
+          
+          # Dynamic Windows Desktop Config
+          flutter config --enable-windows-desktop
+          flutter create --platforms=windows .
+          
+          flutter pub get
+          flutter build windows --release --dart-define=WEB_URL="$url" --dart-define=APP_NAME="$name" --dart-define=FILE_URL="$fileUrl" --dart-define=USE_LOCAL_FILE="${{ env.HAS_FILE }}"
 
-  # =============================================================
-  # 3. iOS ENGINE (Direct App Store & Testing .IPA)
-  # =============================================================
-  build-ios:
-    if: |
-      github.event.client_payload.platform == 'ipa' || 
-      github.event.client_payload.targetPlatform == 'ipa' ||
-      github.event.client_payload.platform == 'ios' || 
-      github.event.client_payload.targetPlatform == 'ios'
-    runs-on: macos-latest
+      - name: Code Signing & Build Clean Windows Setup (.EXE)
+        shell: powershell
+        run: |
+          choco install innosetup -y
+          
+          $rawName = "${{ github.event.client_payload.app_name }}"
+          if ([string]::IsNullOrWhiteSpace($rawName)) { $rawName = "VexApp" }
+          $safeName = $rawName -replace '[^a-zA-Z0-9_-]', '_'
+          
+          $exePath = Get-ChildItem -Path "builder\android_template\build\windows\x64\runner\Release\*.exe" | Select-Object -First 1 -ExpandProperty Name
+          if ([string]::IsNullOrWhiteSpace($exePath)) { $exePath = "builder.exe" }
+          
+          $cert = New-SelfSignedCertificate -Type Custom -Subject "CN=$safeName Publisher, O=Vex Engine" -KeyUsage DigitalSignature -FriendlyName "$safeName Cert" -CertStoreLocation "Cert:\CurrentUser\My"
+          
+          $issContent = @"
+          [Setup]
+          AppName=$safeName
+          AppVersion=1.0
+          AppPublisher=Vex Software Engine
+          DefaultDirName={autopf}\$safeName
+          DefaultGroupName=$safeName
+          OutputDir=.
+          OutputBaseFilename=$safeName-Setup
+          Compression=lzma2/ultra64
+          SolidCompression=yes
 
-    steps:
-      - name: Checkout Code Repository
-        uses: actions/checkout@v4
+          [Files]
+          Source: "builder\android_template\build\windows\x64\runner\Release\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
-      - name: Setup Flutter Framework
-        uses: subosito/flutter-action@v2
-        with:
-          channel: stable
+          [Icons]
+          Name: "{autoprograms}\$safeName"; Filename: "{app}\$exePath"
+          Name: "{commondesktop}\$safeName"; Filename: "{app}\$exePath"
 
-      - name: Clean & Prepare Assets Directory
-        run: |
-          rm -rf builder/android_template/assets/www
-          mkdir -p builder/android_template/assets/www
+          [Run]
+          Filename: "{app}\$exePath"; Description: "Launch App"; Flags: nowait postinstall skipifsilent
+          "@
+          
+          Set-Content -Path "installer.iss" -Value $issContent
+          ISCC.exe installer.iss
 
-      - name: Read & Process Uploaded User Code / ZIP File
-        run: |
-          FILE_URL="${{ github.event.client_payload.file_url }}"
-          if [ -n "$FILE_URL" ] && [ "$FILE_URL" != "null" ]; then
-            echo "[VEX ENGINE] Fetching iOS source code..."
-            curl -s -L -o uploaded_source.zip "$FILE_URL"
-            if file uploaded_source.zip | grep -q 'Zip archive'; then
-              unzip -o uploaded_source.zip -d builder/android_template/assets/www/
-            else
-              cp uploaded_source.zip builder/android_template/assets/www/index.html
-            fi
-            echo "HAS_FILE=true" >> $GITHUB_ENV
-          else
-            echo "HAS_FILE=false" >> $GITHUB_ENV
-          fi
+      - name: Push Windows Setup to VPS Server
+        shell: bash
+        run: |
+          RAW_NAME="${{ github.event.client_payload.app_name || 'VexApp' }}"
+          SAFE_NAME=$(echo "$RAW_NAME" | sed 's/[^a-zA-Z0-9_-]/_/g')
+          EXE_NAME="${SAFE_NAME}-Setup.exe"
+          
+          curl -X POST "http://104.251.123.179:1747/api/upload-build" \
+            -H "x-file-name: $EXE_NAME" \
+            --data-binary "@$EXE_NAME"
 
-      - name: Build iOS Application Package (.IPA)
-        working-directory: builder/android_template
-        run: |
-          URL="${{ github.event.client_payload.app_url || github.event.client_payload.web_url }}"
-          NAME="${{ github.event.client_payload.app_name || 'VexApp' }}"
-          FILE_URL="${{ github.event.client_payload.file_url }}"
-          ENTRY_PATH="${{ github.event.client_payload.entry_path || 'index.html' }}"
-          
-          flutter pub get
-          
-          echo "[VEX ENGINE] Compiling iOS Runner App..."
-          flutter build ios --release --no-codesign \
-            --dart-define=WEB_URL="$URL" \
-            --dart-define=APP_NAME="$NAME" \
-            --dart-define=FILE_URL="$FILE_URL" \
-            --dart-define=ENTRY_PATH="$ENTRY_PATH" \
-            --dart-define=USE_LOCAL_FILE="${{ env.HAS_FILE }}"
-          
-          SAFE_NAME=$(echo "$NAME" | sed 's/[^a-zA-Z0-9_-]/_/g')
-          
-          mkdir -p Payload
-          mv build/ios/iphoneos/Runner.app Payload/
-          zip -r "${SAFE_NAME}-iOS.ipa" Payload
-          
-          echo "IPA_FILE=${SAFE_NAME}-iOS.ipa" >> $GITHUB_ENV
+      - name: Upload Windows Artifacts to GitHub
+        uses: actions/upload-artifact@v4
+        with:
+          name: VexApp-Windows-Build
+          path: "*-Setup.exe"
+          if-no-files-found: warn
 
-      - name: Push iOS IPA Package Direct to Express Server
-        run: |
-          echo "[VEX ENGINE] Uploading ${{ env.IPA_FILE }} to Express Server..."
-          curl -X POST "http://104.251.123.179:1747/api/upload-build" \
-            -H "x-file-name: ${{ env.IPA_FILE }}" \
-            --data-binary "@builder/android_template/${{ env.IPA_FILE }}"
+  # =============================================================
+  # 3. iOS ENGINE (APP STORE READY .IPA)
+  # =============================================================
+  build-ios:
+    if: |
+      github.event.client_payload.platform == 'ipa' || 
+      github.event.client_payload.targetPlatform == 'ipa' ||
+      github.event.client_payload.platform == 'ios' || 
+      github.event.client_payload.targetPlatform == 'ios'
+    runs-on: macos-latest
 
-      - name: Backup iOS Artifact to GitHub Actions
-        uses: actions/upload-artifact@v4
-        with:
-          name: VexApp-iOS-Build
-          path: "builder/android_template/*.ipa"
-          if-no-files-found: warn
+    steps:
+      - name: Checkout Code Repository
+        uses: actions/checkout@v4
+
+      - name: Setup Flutter Framework
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+
+      - name: Clean & Prepare Assets Directory
+        run: |
+          rm -rf builder/android_template/assets/www
+          mkdir -p builder/android_template/assets/www
+
+      - name: Read & Process Uploaded User Code / ZIP File
+        run: |
+          FILE_URL="${{ github.event.client_payload.file_url }}"
+          if [ -n "$FILE_URL" ] && [ "$FILE_URL" != "null" ]; then
+            echo "[VEX ENGINE] Downloading user asset for iOS..."
+            curl -s -L -o uploaded_source.zip "$FILE_URL"
+            if file uploaded_source.zip | grep -q 'Zip archive'; then
+              unzip -o uploaded_source.zip -d builder/android_template/assets/www/
+            else
+              cp uploaded_source.zip builder/android_template/assets/www/index.html
+            fi
+            echo "HAS_FILE=true" >> $GITHUB_ENV
+          else
+            echo "HAS_FILE=false" >> $GITHUB_ENV
+          fi
+
+      - name: Fetch Dependencies
+        working-directory: builder/android_template
+        run: flutter pub get
+
+      - name: Build iOS IPA Package
+        working-directory: builder/android_template
+        run: |
+          URL="${{ github.event.client_payload.app_url || github.event.client_payload.web_url }}"
+          NAME="${{ github.event.client_payload.app_name }}"
+          FILE_URL="${{ github.event.client_payload.file_url }}"
+          flutter build ios --release --no-codesign \
+            --dart-define=WEB_URL="$URL" \
+            --dart-define=APP_NAME="$NAME" \
+            --dart-define=FILE_URL="$FILE_URL" \
+            --dart-define=USE_LOCAL_FILE="${{ env.HAS_FILE }}"
+          
+          RAW_NAME="${{ github.event.client_payload.app_name || 'VexApp' }}"
+          SAFE_NAME=$(echo "$RAW_NAME" | sed 's/[^a-zA-Z0-9_-]/_/g')
+          
+          mkdir -p Payload
+          mv build/ios/iphoneos/Runner.app Payload/
+          zip -r "${SAFE_NAME}-iOS.ipa" Payload
+          echo "IPA_FILE=${SAFE_NAME}-iOS.ipa" >> $GITHUB_ENV
+
+      - name: Push iOS IPA Package to VPS Server
+        run: |
+          curl -X POST "http://104.251.123.179:1747/api/upload-build" \
+            -H "x-file-name: ${{ env.IPA_FILE }}" \
+            --data-binary "@${{ env.IPA_FILE }}"
+
+      - name: Upload iOS Artifacts to GitHub
+        uses: actions/upload-artifact@v4
+        with:
+          name: VexApp-iOS-Build
+          path: "builder/android_template/*.ipa"
+          if-no-files-found: warn
