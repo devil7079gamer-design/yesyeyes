@@ -11,7 +11,7 @@ final FlutterLocalNotificationsPlugin flutterLocalNotificationsPlugin =
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
-  // Initialize Notifications
+  // Initialize Notifications for Android
   const AndroidInitializationSettings initializationSettingsAndroid =
       AndroidInitializationSettings('@mipmap/ic_launcher');
       
@@ -20,8 +20,10 @@ void main() async {
       
   await flutterLocalNotificationsPlugin.initialize(initializationSettings);
   
-  // Request Notification Permissions
-  await Permission.notification.request();
+  // Request Notification Permissions on Android/Mobile
+  if (Platform.isAndroid || Platform.isIOS) {
+    await Permission.notification.request();
+  }
 
   runApp(const MyApp());
 }
@@ -76,34 +78,40 @@ class _DynamicWebViewState extends State<DynamicWebView> {
   @override
   void initState() {
     super.initState();
-    _showWelcomeNotification();
-
+    
+    // Platform checking for safe initialization
     if (Platform.isWindows) {
       _initWindowsWebView();
     } else {
       _initMobileWebView();
+      _showWelcomeNotification();
     }
   }
 
+  // Safe method for welcome notification
   Future<void> _showWelcomeNotification() async {
-    const AndroidNotificationDetails androidPlatformChannelSpecifics =
-        AndroidNotificationDetails(
-      'vex_channel_id',
-      'Vex Notifications',
-      channelDescription: 'App notification channel',
-      importance: Importance.max,
-      priority: Priority.high,
-      ticker: 'ticker',
-    );
-    const NotificationDetails platformChannelSpecifics =
-        NotificationDetails(android: androidPlatformChannelSpecifics);
-        
-    await flutterLocalNotificationsPlugin.show(
-      0,
-      widget.title,
-      'App successfully launched and connected!',
-      platformChannelSpecifics,
-    );
+    try {
+      const AndroidNotificationDetails androidPlatformChannelSpecifics =
+          AndroidNotificationDetails(
+        'vex_channel_id',
+        'Vex Notifications',
+        channelDescription: 'App notification channel',
+        importance: Importance.max,
+        priority: Priority.high,
+        ticker: 'ticker',
+      );
+      const NotificationDetails platformChannelSpecifics =
+          NotificationDetails(android: androidPlatformChannelSpecifics);
+          
+      await flutterLocalNotificationsPlugin.show(
+        0,
+        widget.title,
+        'App successfully launched and connected!',
+        platformChannelSpecifics,
+      );
+    } catch (_) {
+      // Ignore notification errors if permissions are denied
+    }
   }
 
   Future<void> _initWindowsWebView() async {
@@ -112,7 +120,7 @@ class _DynamicWebViewState extends State<DynamicWebView> {
       await _winController.setBackgroundColor(Colors.white);
 
       if (widget.isLocal) {
-        // Windows path for extracted local index.html asset
+        // Windows local path for extracted assets
         final String localPath = Uri.file('${Directory.current.path}/data/flutter_assets/assets/www/index.html').toString();
         await _winController.loadUrl(localPath);
       } else {
