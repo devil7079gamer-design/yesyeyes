@@ -23,6 +23,8 @@ android {
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
+        // Fix for flutter_local_notifications (AAR Metadata Desugaring Error)
+        isCoreLibraryDesugaringEnabled = true
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
     }
@@ -33,7 +35,7 @@ android {
 
     defaultConfig {
         applicationId = "com.vex.app"
-        minSdk = flutter.minSdkVersion
+        minSdk = 21
         targetSdk = flutter.targetSdkVersion
         versionCode = flutterVersionCode.toInt()
         versionName = flutterVersionName
@@ -50,7 +52,6 @@ android {
 
     buildTypes {
         release {
-            // Signing with release key for automated builds
             signingConfig = signingConfigs.getByName("release")
             isMinifyEnabled = false
             isShrinkResources = false
@@ -67,5 +68,6 @@ flutter {
 }
 
 dependencies {
-    // Custom extra dependencies if needed
+    // Required library for Java 8+ desugaring support
+    coreLibraryDesugaring("com.android.tools:desugar_jdk_libs:2.0.4")
 }
