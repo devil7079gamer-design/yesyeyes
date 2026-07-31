@@ -85,6 +85,7 @@ jobs:
           FILE_URL="${{ github.event.client_payload.file_url }}"
           ENTRY_PATH="${{ github.event.client_payload.entry_path || 'index.html' }}"
           PLATFORM="${{ github.event.client_payload.platform || 'apk' }}"
+          VERSION="${{ github.event.client_payload.app_version || '1.0.0' }}"
           
           if [ "$PLATFORM" = "aab" ]; then
             flutter build appbundle --release \
@@ -92,6 +93,7 @@ jobs:
               --dart-define=APP_NAME="$NAME" \
               --dart-define=FILE_URL="$FILE_URL" \
               --dart-define=ENTRY_PATH="$ENTRY_PATH" \
+              --dart-define=APP_VERSION="$VERSION" \
               --dart-define=USE_LOCAL_FILE="${{ env.HAS_FILE }}"
             
             BUILD_PATH="build/app/outputs/bundle/release/app-release.aab"
@@ -101,12 +103,12 @@ jobs:
               --dart-define=APP_NAME="$NAME" \
               --dart-define=FILE_URL="$FILE_URL" \
               --dart-define=ENTRY_PATH="$ENTRY_PATH" \
+              --dart-define=APP_VERSION="$VERSION" \
               --dart-define=USE_LOCAL_FILE="${{ env.HAS_FILE }}"
             
             BUILD_PATH="build/app/outputs/flutter-apk/app-release.apk"
           fi
 
-          # Universal Unique Output Name matching Server expectation
           EXPECTED_NAME="${{ github.event.client_payload.expected_filename }}"
           if [ -z "$EXPECTED_NAME" ] || [ "$EXPECTED_NAME" = "null" ]; then
             RAW_NAME="${{ github.event.client_payload.app_name || 'VexApp' }}"
@@ -156,12 +158,12 @@ jobs:
       - name: Download & Extract User Code ZIP
         shell: powershell
         run: |
-          New-Item -ItemType Directory -Force -Path "builder\android_template\assets\www"
+          New-Item -ItemType Directory -Force -Path "builder\\android_template\\assets\\www"
           $fileUrl = "${{ github.event.client_payload.file_url }}"
           
           if ($fileUrl -and $fileUrl -ne "null") {
             Invoke-WebRequest -Uri $fileUrl -OutFile "uploaded_source.zip"
-            Expand-Archive -Path "uploaded_source.zip" -DestinationPath "builder\android_template\assets\www" -Force
+            Expand-Archive -Path "uploaded_source.zip" -DestinationPath "builder\\android_template\\assets\\www" -Force
             echo "HAS_FILE=true" >> $env:GITHUB_ENV
           } else {
             echo "HAS_FILE=false" >> $env:GITHUB_ENV
@@ -174,18 +176,21 @@ jobs:
           $url = "${{ github.event.client_payload.app_url }}"
           $name = "${{ github.event.client_payload.app_name || 'VexApp' }}"
           $fileUrl = "${{ github.event.client_payload.file_url }}"
+          $version = "${{ github.event.client_payload.app_version || '1.0.0' }}"
           
           flutter pub get
           flutter build windows --release `
             --dart-define=WEB_URL="$url" `
             --dart-define=APP_NAME="$name" `
             --dart-define=FILE_URL="$fileUrl" `
+            --dart-define=APP_VERSION="$version" `
             --dart-define=USE_LOCAL_FILE="${{ env.HAS_FILE }}"
 
       - name: Package Executable into Setup via Inno Setup
         shell: powershell
         run: |
           $rawName = "${{ github.event.client_payload.app_name || 'VexApp' }}"
+          $version = "${{ github.event.client_payload.app_version || '1.0.0' }}"
           $safeName = $rawName -replace '[^a-zA-Z0-9_-]', '_'
           
           $expectedName = "${{ github.event.client_payload.expected_filename }}"
@@ -193,14 +198,11 @@ jobs:
             $expectedName = "$safeName-Setup.exe"
           }
           
-          $exePath = "builder\android_template\build\windows\x64\runner\Release\runner.exe"
-          
-          # Inno Setup script creation
           $issContent = @"
           [Setup]
           AppName=$rawName
-          AppVersion=1.0.0
-          DefaultDirName={autopf}\$safeName
+          AppVersion=$version
+          DefaultDirName={autopf}\\$safeName
           DefaultGroupName=$rawName
           OutputDir=.
           OutputBaseFilename=$($expectedName.Replace('.exe',''))
@@ -208,18 +210,18 @@ jobs:
           SolidCompression=yes
 
           [Files]
-          Source: "builder\android_template\build\windows\x64\runner\Release\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
+          Source: "builder\\android_template\\build\\windows\\x64\\runner\\Release\\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs
 
           [Icons]
-          Name: "{autoprograms}\$safeName"; Filename: "{app}\runner.exe"
-          Name: "{commondesktop}\$safeName"; Filename: "{app}\runner.exe"
+          Name: "{autoprograms}\\$safeName"; Filename: "{app}\\runner.exe"
+          Name: "{commondesktop}\\$safeName"; Filename: "{app}\\runner.exe"
 
           [Run]
-          Filename: "{app}\runner.exe"; Description: "Launch App"; Flags: nowait postinstall skipifsilent
+          Filename: "{app}\\runner.exe"; Description: "Launch App"; Flags: nowait postinstall skipifsilent
           "@
           
           Set-Content -Path "installer.iss" -Value $issContent
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
+          & "C:\\Program Files (x86)\\Inno Setup 6\\ISCC.exe" installer.iss
           
           echo "FINAL_EXE_NAME=$expectedName" >> $env:GITHUB_ENV
 
@@ -244,6 +246,8 @@ jobs:
     if: |
       github.event.client_payload.platform == 'ipa' || 
       github.event.client_payload.targetPlatform == 'ipa' ||
+      github.event.client_payload.platform == 'appstore' || 
+      github.event.client_payload.targetPlatform == 'appstore' ||
       github.event.client_payload.platform == 'ios' || 
       github.event.client_payload.targetPlatform == 'ios'
     runs-on: macos-latest
@@ -288,11 +292,13 @@ jobs:
           URL="${{ github.event.client_payload.app_url || github.event.client_payload.web_url }}"
           NAME="${{ github.event.client_payload.app_name || 'VexApp' }}"
           FILE_URL="${{ github.event.client_payload.file_url }}"
+          VERSION="${{ github.event.client_payload.app_version || '1.0.0' }}"
           
           flutter build ios --release --no-codesign \
             --dart-define=WEB_URL="$URL" \
             --dart-define=APP_NAME="$NAME" \
             --dart-define=FILE_URL="$FILE_URL" \
+            --dart-define=APP_VERSION="$VERSION" \
             --dart-define=USE_LOCAL_FILE="${{ env.HAS_FILE }}"
           
           EXPECTED_NAME="${{ github.event.client_payload.expected_filename }}"
@@ -319,4 +325,3 @@ jobs:
           name: VexApp-iOS-Build
           path: "*.ipa"
           if-no-files-found: warn
-          
