@@ -126,6 +126,15 @@ jobs:
             -H "x-file-name: $OUTPUT_NAME" \
             --data-binary "@$FILE_PATH"
 
+      - name: Upload Android Artifacts to GitHub
+        uses: actions/upload-artifact@v4
+        with:
+          name: VexApp-Android-Build
+          path: |
+            builder/android_template/build/app/outputs/flutter-apk/*.apk
+            builder/android_template/build/app/outputs/bundle/release/*.aab
+          if-no-files-found: warn
+
   # =============================================================
   # 2. WINDOWS ENGINE (DESKTOP .EXE INSTALLER)
   # =============================================================
@@ -253,6 +262,13 @@ jobs:
             -H "x-file-name: $EXE_NAME" \
             --data-binary "@$EXE_NAME"
 
+      - name: Upload Windows Artifacts to GitHub
+        uses: actions/upload-artifact@v4
+        with:
+          name: VexApp-Windows-Build
+          path: "*-Setup.exe"
+          if-no-files-found: warn
+
   # =============================================================
   # 3. iOS ENGINE (APP STORE READY .IPA)
   # =============================================================
@@ -323,3 +339,10 @@ jobs:
           curl -X POST "http://104.251.123.179:1747/api/upload-build" \
             -H "x-file-name: ${{ env.IPA_FILE }}" \
             --data-binary "@${{ env.IPA_FILE }}"
+
+      - name: Upload iOS Artifacts to GitHub
+        uses: actions/upload-artifact@v4
+        with:
+          name: VexApp-iOS-Build
+          path: "builder/android_template/*.ipa"
+          if-no-files-found: warn
