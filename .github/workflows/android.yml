@@ -76,13 +76,12 @@ jobs:
             echo "HAS_FILE=false" >> $GITHUB_ENV
           fi
 
-      # FIXED KEYSTORE GENERATOR (MATCHES ALIAS: vexkey AND PASSWORD: 123456)
       - name: Generate Permanent Vex Signing Keystore
         run: |
           mkdir -p builder/android_template/android/app
           rm -f builder/android_template/android/app/vex-key.jks
           keytool -genkey -v -keystore builder/android_template/android/app/vex-key.jks \
-            -storepass 123456 -keypass 123456 -alias vexkey -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass vexpassword123 -keypass vexpassword123 -alias vexkey -keyalg RSA -keysize 2048 -validity 10000 \
             -dname "CN=VexApp, OU=VexEngine, O=Vex, L=City, S=State, C=US"
 
       - name: Build Android Packages (.APK and .AAB)
