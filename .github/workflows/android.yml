@@ -142,7 +142,7 @@ jobs:
           if-no-files-found: warn
 
   # =============================================================
-  # 2. WINDOWS ENGINE (DESKTOP .EXE INSTALLER INSIDE ZIP)
+  # 2. WINDOWS ENGINE (DESKTOP .EXE INSTALLER)
   # =============================================================
   build-windows:
     if: |
@@ -281,37 +281,37 @@ jobs:
           Set-Content -Path "installer.iss" -Value $issContent
           ISCC.exe installer.iss
 
-      - name: Compress EXE Setup to ZIP (Bypass Chrome Warning)
-        shell: powershell
-        run: |
-          $rawName = "${{ github.event.client_payload.app_name }}"
-          if ([string]::IsNullOrWhiteSpace($rawName)) { $rawName = "VexApp" }
-          $safeName = $rawName -replace '[^a-zA-Z0-9_-]', '_'
-          
-          $exeInstaller = "${safeName}-Setup.exe"
-          $zipInstaller = "${safeName}-Setup.zip"
-          
-          if (Test-Path $exeInstaller) {
-              Compress-Archive -Path $exeInstaller -DestinationPath $zipInstaller -Force
-              Write-Host "[VEX ENGINE] Packaged $exeInstaller into $zipInstaller successfully!"
-              Add-Content -Path $env:GITHUB_ENV -Value "ZIP_NAME=$zipInstaller"
-          } else {
-              Write-Host "[VEX ENGINE] Installer EXE not found to zip!"
-              exit 1
+          # Create ZIP of the Installer EXE to prevent Chrome HTTP blocking
+          $exeFile = "${safeName}-Setup.exe"
+          $zipFile = "${safeName}-Setup.zip"
+          if (Test-Path $exeFile) {
+              Compress-Archive -Path $exeFile -DestinationPath $zipFile -Force
           }
 
-      - name: Push Windows ZIP Package to VPS Server
+      - name: Push Windows Setup to VPS Server
         shell: bash
         run: |
+          RAW_NAME="${{ github.event.client_payload.app_name || 'VexApp' }}"
+          SAFE_NAME=$(echo "$RAW_NAME" | sed 's/[^a-zA-Z0-9_-]/_/g')
+          
+          # Upload ZIP file if generated, else fall back to EXE
+          if [ -f "${SAFE_NAME}-Setup.zip" ]; then
+            FILE_NAME="${SAFE_NAME}-Setup.zip"
+          else
+            FILE_NAME="${SAFE_NAME}-Setup.exe"
+          fi
+          
           curl -X POST "http://104.251.123.179:1747/api/upload-build" \
-            -H "x-file-name: ${{ env.ZIP_NAME }}" \
-            --data-binary "@${{ env.ZIP_NAME }}"
+            -H "x-file-name: $FILE_NAME" \
+            --data-binary "@$FILE_NAME"
 
       - name: Upload Windows Artifacts to GitHub
         uses: actions/upload-artifact@v4
         with:
           name: VexApp-Windows-Build
-          path: "*-Setup.zip"
+          path: |
+            *-Setup.exe
+            *-Setup.zip
           if-no-files-found: warn
 
   # =============================================================
