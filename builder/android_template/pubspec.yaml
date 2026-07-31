@@ -25,9 +25,17 @@ dev_dependencies:
 flutter:
   uses-material-design: true
 
-  # =============================================================
-  # VEX ENGINE AUTOMATIC ASSET BINDING
-  # =============================================================
+  # Asset management: Is se web assets clicker app override kareingi
   assets:
-    - assets/
+    - assets/user_icon.png
+    - assets/default_icon.png
     - assets/www/
+    - assets/www/index.html
+
+# Windows/Android Icon Generator Config
+flutter_launcher_icons:
+  android: true
+  ios: true
+  image_path: "assets/user_icon.png"
+  min_sdk_android: 21
+  remove_alpha_ios: true
