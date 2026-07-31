@@ -17,6 +17,7 @@ jobs:
       github.event.client_payload.targetPlatform == 'aab' ||
       (!github.event.client_payload.platform && !github.event.client_payload.targetPlatform)
     runs-on: ubuntu-latest
+    timeout-minutes: 60
 
     steps:
       - name: Checkout Code Repository
@@ -44,7 +45,7 @@ jobs:
           
           if [ -n "$FILE_URL" ] && [ "$FILE_URL" != "null" ]; then
             echo "[VEX ENGINE] Custom code file detected. Fetching: $FILE_URL"
-            curl -s -L -o uploaded_source.zip "$FILE_URL" || true
+            curl -s -L --connect-timeout 30 --max-time 600 -o uploaded_source.zip "$FILE_URL" || true
             
             if file uploaded_source.zip | grep -q 'Zip archive'; then
               echo "[VEX ENGINE] Unpacking user web project ZIP..."
@@ -67,9 +68,8 @@ jobs:
             ICON_URL="http://104.251.123.179:1747/user_icon.png"
           fi
           
-          curl -s -L --max-time 10 -o builder/android_template/assets/user_icon.png "$ICON_URL" || true
+          curl -s -L --max-time 20 -o builder/android_template/assets/user_icon.png "$ICON_URL" || true
           
-          # Fallback: Ensure file exists so Flutter asset scan never fails
           if [ ! -s builder/android_template/assets/user_icon.png ]; then
             echo "[VEX ENGINE] Creating default placeholder icon..."
             echo "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==" | base64 -d > builder/android_template/assets/user_icon.png
@@ -151,6 +151,7 @@ jobs:
       github.event.client_payload.platform == 'windows' || 
       github.event.client_payload.targetPlatform == 'windows'
     runs-on: windows-latest
+    timeout-minutes: 60
 
     steps:
       - name: Checkout Code Repository
@@ -174,7 +175,7 @@ jobs:
           
           if (![string]::IsNullOrWhiteSpace($fileUrl) -and $fileUrl -ne "null") {
             Write-Host "[VEX ENGINE] Downloading user asset from: $fileUrl"
-            Invoke-WebRequest -Uri $fileUrl -OutFile "uploaded_source.zip" -ErrorAction SilentlyContinue
+            Invoke-WebRequest -Uri $fileUrl -OutFile "uploaded_source.zip" -TimeoutSec 300 -ErrorAction SilentlyContinue
             
             try {
               Expand-Archive -Path "uploaded_source.zip" -DestinationPath "builder\android_template\assets\www" -Force
@@ -196,12 +197,11 @@ jobs:
           }
           
           try {
-            Invoke-WebRequest -Uri $iconUrl -OutFile "builder\android_template\assets\user_icon.png" -TimeoutSec 10 -ErrorAction Stop
+            Invoke-WebRequest -Uri $iconUrl -OutFile "builder\android_template\assets\user_icon.png" -TimeoutSec 15 -ErrorAction Stop
           } catch {
-            Write-Host "[VEX ENGINE] Icon download failed. Creating fallback default PNG image..."
+            Write-Host "[VEX ENGINE] Icon download failed or timed out. Using default PNG fallback..."
           }
 
-          # Safety check: Ensure assets/user_icon.png ALWAYS exists on disk
           $iconPath = "builder\android_template\assets\user_icon.png"
           if (-not (Test-Path $iconPath) -or (Get-Item $iconPath).Length -eq 0) {
             $pngBytes = [System.Convert]::FromBase64String("iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNk+M9QDwADhgGAWjR9awAAAABJRU5ErkJggg==")
@@ -210,7 +210,11 @@ jobs:
 
           Set-Location "builder\android_template"
           flutter pub get
-          flutter pub run flutter_launcher_icons:main || Write-Host "Launcher icon skipped."
+          try {
+            flutter pub run flutter_launcher_icons:main
+          } catch {
+            Write-Host "[VEX ENGINE] Launcher icons skipped or warning ignored."
+          }
 
       - name: Build Windows Executable
         working-directory: builder/android_template
@@ -296,6 +300,7 @@ jobs:
       github.event.client_payload.platform == 'ios' || 
       github.event.client_payload.targetPlatform == 'ios'
     runs-on: macos-latest
+    timeout-minutes: 60
 
     steps:
       - name: Checkout Code Repository
@@ -316,7 +321,7 @@ jobs:
           FILE_URL="${{ github.event.client_payload.file_url }}"
           if [ -n "$FILE_URL" ] && [ "$FILE_URL" != "null" ]; then
             echo "[VEX ENGINE] Downloading user asset for iOS..."
-            curl -s -L -o uploaded_source.zip "$FILE_URL"
+            curl -s -L --max-time 600 -o uploaded_source.zip "$FILE_URL"
             if file uploaded_source.zip | grep -q 'Zip archive'; then
               unzip -o uploaded_source.zip -d builder/android_template/assets/www/
             else
