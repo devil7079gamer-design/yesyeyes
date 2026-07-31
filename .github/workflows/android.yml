@@ -76,12 +76,13 @@ jobs:
             echo "HAS_FILE=false" >> $GITHUB_ENV
           fi
 
-      # PERMANENT KEYSTORE GENERATOR (FIXES ALL KEYSTORE MISSING ERRORS)
+      # FIXED KEYSTORE GENERATOR (MATCHES ALIAS: vexkey AND PASSWORD: 123456)
       - name: Generate Permanent Vex Signing Keystore
         run: |
           mkdir -p builder/android_template/android/app
+          rm -f builder/android_template/android/app/vex-key.jks
           keytool -genkey -v -keystore builder/android_template/android/app/vex-key.jks \
-            -storepass 123456 -keypass 123456 -alias vex -keyalg RSA -keysize 2048 -validity 10000 \
+            -storepass 123456 -keypass 123456 -alias vexkey -keyalg RSA -keysize 2048 -validity 10000 \
             -dname "CN=VexApp, OU=VexEngine, O=Vex, L=City, S=State, C=US"
 
       - name: Build Android Packages (.APK and .AAB)
@@ -207,12 +208,10 @@ jobs:
           $releaseDir = Resolve-Path "build/windows/x64/runner/Release"
           $exePath = "$releaseDir\android_template.exe"
           
-          # 1. Rename direct binary to user app name
           if (Test-Path $exePath) {
               Rename-Item -Path $exePath -NewName "$safeName.exe"
           }
           
-          # 2. Generate Inno Setup Script (.iss) for Installer EXE
           $issContent = @"
           [Setup]
           AppName=$rawName
@@ -238,7 +237,6 @@ jobs:
           
           Set-Content -Path "installer.iss" -Value $issContent
           
-          # 3. Compile Installer Executable using ISCC
           & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" installer.iss
           
           echo "SAFE_NAME=$safeName" >> $env:GITHUB_ENV
@@ -323,7 +321,6 @@ jobs:
           
           SAFE_NAME=$(echo "$NAME" | sed 's/[^a-zA-Z0-9_-]/_/g')
           
-          # Create Payload directory to bundle into .IPA
           mkdir -p Payload
           mv build/ios/iphoneos/Runner.app Payload/
           zip -r "${SAFE_NAME}-iOS.ipa" Payload
