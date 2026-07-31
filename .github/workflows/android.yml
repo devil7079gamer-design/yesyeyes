@@ -142,7 +142,7 @@ jobs:
           if-no-files-found: warn
 
   # =============================================================
-  # 2. WINDOWS ENGINE (DESKTOP .EXE INSTALLER)
+  # 2. WINDOWS ENGINE (DESKTOP .EXE INSTALLER INSIDE ZIP)
   # =============================================================
   build-windows:
     if: |
@@ -281,22 +281,37 @@ jobs:
           Set-Content -Path "installer.iss" -Value $issContent
           ISCC.exe installer.iss
 
-      - name: Push Windows Setup to VPS Server
+      - name: Compress EXE Setup to ZIP (Bypass Chrome Warning)
+        shell: powershell
+        run: |
+          $rawName = "${{ github.event.client_payload.app_name }}"
+          if ([string]::IsNullOrWhiteSpace($rawName)) { $rawName = "VexApp" }
+          $safeName = $rawName -replace '[^a-zA-Z0-9_-]', '_'
+          
+          $exeInstaller = "${safeName}-Setup.exe"
+          $zipInstaller = "${safeName}-Setup.zip"
+          
+          if (Test-Path $exeInstaller) {
+              Compress-Archive -Path $exeInstaller -DestinationPath $zipInstaller -Force
+              Write-Host "[VEX ENGINE] Packaged $exeInstaller into $zipInstaller successfully!"
+              Add-Content -Path $env:GITHUB_ENV -Value "ZIP_NAME=$zipInstaller"
+          } else {
+              Write-Host "[VEX ENGINE] Installer EXE not found to zip!"
+              exit 1
+          }
+
+      - name: Push Windows ZIP Package to VPS Server
         shell: bash
         run: |
-          RAW_NAME="${{ github.event.client_payload.app_name || 'VexApp' }}"
-          SAFE_NAME=$(echo "$RAW_NAME" | sed 's/[^a-zA-Z0-9_-]/_/g')
-          EXE_NAME="${SAFE_NAME}-Setup.exe"
-          
           curl -X POST "http://104.251.123.179:1747/api/upload-build" \
-            -H "x-file-name: $EXE_NAME" \
-            --data-binary "@$EXE_NAME"
+            -H "x-file-name: ${{ env.ZIP_NAME }}" \
+            --data-binary "@${{ env.ZIP_NAME }}"
 
       - name: Upload Windows Artifacts to GitHub
         uses: actions/upload-artifact@v4
         with:
           name: VexApp-Windows-Build
-          path: "*-Setup.exe"
+          path: "*-Setup.zip"
           if-no-files-found: warn
 
   # =============================================================
