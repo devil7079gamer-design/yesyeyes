@@ -232,7 +232,7 @@ jobs:
           flutter pub get
           flutter build windows --release --dart-define=WEB_URL="$url" --dart-define=APP_NAME="$name" --dart-define=FILE_URL="$fileUrl" --dart-define=USE_LOCAL_FILE="${{ env.HAS_FILE }}"
 
-      - name: Code Signing & Build Clean Windows Setup (.EXE)
+      - name: Professional Packaging & Windows Installer (.EXE)
         shell: powershell
         run: |
           choco install innosetup -y
@@ -249,7 +249,7 @@ jobs:
           $issContent = @"
           [Setup]
           AppName=$safeName
-          AppVersion=1.0
+          AppVersion=1.0.0
           AppPublisher=Vex Software Engine
           DefaultDirName={autopf}\$safeName
           DefaultGroupName=$safeName
@@ -257,16 +257,25 @@ jobs:
           OutputBaseFilename=$safeName-Setup
           Compression=lzma2/ultra64
           SolidCompression=yes
+          PrivilegesRequired=lowest
+          PrivilegesRequiredOverridesAllowed=commandline dialog
+          ArchitecturesInstallIn64BitMode=x64compatible
+          UninstallDisplayIcon={app}\$exePath
+
+          [Tasks]
+          Name: "desktopicon"; Description: "Create a &desktop shortcut"; GroupDescription: "Additional shortcuts:"
+          Name: "quicklaunchicon"; Description: "Create a &Quick Launch shortcut"; GroupDescription: "Additional shortcuts:"; Flags: unchecked
 
           [Files]
           Source: "builder\android_template\build\windows\x64\runner\Release\*"; DestDir: "{app}"; Flags: ignoreversion recursesubdirs createallsubdirs
 
           [Icons]
           Name: "{autoprograms}\$safeName"; Filename: "{app}\$exePath"
-          Name: "{commondesktop}\$safeName"; Filename: "{app}\$exePath"
+          Name: "{userdesktop}\$safeName"; Filename: "{app}\$exePath"; Tasks: desktopicon
+          Name: "{userappdata}\Microsoft\Internet Explorer\Quick Launch\$safeName"; Filename: "{app}\$exePath"; Tasks: quicklaunchicon
 
           [Run]
-          Filename: "{app}\$exePath"; Description: "Launch App"; Flags: nowait postinstall skipifsilent
+          Filename: "{app}\$exePath"; Description: "Launch $safeName"; Flags: nowait postinstall skipifsilent
           "@
           
           Set-Content -Path "installer.iss" -Value $issContent
